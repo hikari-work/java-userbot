@@ -1,0 +1,54 @@
+package com.yann.demosping.manager;
+
+import it.tdlight.jni.TdApi;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Component;
+
+import java.lang.reflect.InvocationTargetException;
+import java.util.List;
+
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class Dispatcher {
+
+    private final CommandRegistry commandRegistry;
+
+    private final List<BotInterceptor> interceptors;
+
+    @Value("${message.prefix}")
+    private String prefix;
+
+    @Async
+    public void onUpdateMessage(TdApi.UpdateNewMessage message) {
+
+        if (message.message.content instanceof TdApi.MessageText textContent) {
+            for (BotInterceptor interceptor : interceptors) {
+                try {
+                    boolean proceed = interceptor.preHandle(message, textContent.text.text);
+                    if (!proceed) {
+                        return;
+                    }
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }
+            if (textContent.text.text.startsWith(prefix)) {
+                String[] parts = textContent.text.text.split(" ", 2);
+                String trigger = parts[0].replace(prefix, "");
+                CommandContainer container = commandRegistry.getCommand(trigger);
+                if (container != null) {
+                    log.info("Container is Not Null");
+                    try {
+                        container.method().invoke(container.bean(), message, parts.length > 1 ? parts[1] : "");
+                    } catch (IllegalAccessException | InvocationTargetException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+            }
+        }
+    }
+}
