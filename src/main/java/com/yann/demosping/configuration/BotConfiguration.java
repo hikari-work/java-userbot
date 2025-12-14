@@ -39,7 +39,7 @@ public class BotConfiguration {
     @Bean
     public SimpleTelegramClient clientBuilder(TDLibSettings settings,
                                               AuthenticationSupplier<?> authenticationSupplier) {
-        // Hapus blok try-with-resources
+
         SimpleTelegramClientFactory simpleTelegramClientFactory = new SimpleTelegramClientFactory();
         return simpleTelegramClientFactory.builder(settings).build(authenticationSupplier);
     }

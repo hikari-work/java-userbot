@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -19,7 +20,18 @@ public class ModuleStateService {
 
     private static final String DATA_PREFIX = "data:";
 
+    public void saveFilter(long chatId, String trigger, String content) {
+        redisTemplate.opsForHash().put(KEY_PREFIX + "filters:" + chatId, trigger, content);
+    }
+    public Map<Object, Object> getAllFilters(long chatId) {
+        String key = KEY_PREFIX + "filters:" + chatId;
+        return redisTemplate.opsForHash().entries(key);
+    }
+    public boolean deleteFilter(long chatId, String trigger) {
+        String key = KEY_PREFIX + "filters:" + chatId;
 
+        return redisTemplate.opsForHash().delete(key, trigger) > 0;
+    }
 
     public void addTarget(String moduleName, long id) {
         redisTemplate.opsForSet().add(KEY_PREFIX + moduleName, id);
