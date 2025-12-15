@@ -23,7 +23,7 @@ public class Copy {
     private final SimpleTelegramClient client;
     private final MessageLinkResolver messageLinkResolver;
 
-    @UserBotCommand(commands = {"cpy", "copy"}, description = "Generate links 1 by 1")
+    @UserBotCommand(commands = {"list", "lst"}, description = "Generate links 1 by 1")
     public void generateMessageLinks(TdApi.UpdateNewMessage message, String args) {
         long currentChatId = message.message.chatId;
         long commandMsgId = message.message.id;
