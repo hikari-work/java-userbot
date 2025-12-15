@@ -21,6 +21,7 @@ public class FilterInterceptor implements BotInterceptor {
     private final ModuleStateService stateService;
 
     private final SimpleTelegramClient client;
+    private final CopyMessageUtils copyMessageUtils;
 
     @Override
     public boolean preHandle(TdApi.UpdateNewMessage message, String args) {
@@ -63,7 +64,7 @@ public class FilterInterceptor implements BotInterceptor {
                     if (messageresult.isError()) {
                         return;
                     }
-                    TdApi.InputMessageContent inputMessageContent = CopyMessageUtils.convertToInput(messageresult.get().content);
+                    TdApi.InputMessageContent inputMessageContent = copyMessageUtils.convertToInput(messageresult.get().content);
                     if (inputMessageContent != null) {
                         client.send(
                                 new TdApi.SendMessage(

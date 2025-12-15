@@ -1,50 +1,50 @@
 package com.yann.demosping.utils;
 
 import it.tdlight.jni.TdApi;
+import org.springframework.stereotype.Component;
 
+@Component
 public class CopyMessageUtils {
 
-    public static TdApi.InputMessageContent convertToInput(TdApi.MessageContent content) {
+    public TdApi.InputMessageContent convertToInput(TdApi.MessageContent content) {
         switch (content) {
             case TdApi.MessageText text -> {
                 return new TdApi.InputMessageText(text.text, new TdApi.LinkPreviewOptions(), false);
             }
             case TdApi.MessagePhoto photo -> {
                 TdApi.PhotoSize maxPhoto = photo.photo.sizes[photo.photo.sizes.length - 1];
-                // InputMessagePhoto(InputFile, InputThumbnail, int[], int, int, FormattedText, boolean, MessageSelfDestructType, boolean)
                 return new TdApi.InputMessagePhoto(
-                        new TdApi.InputFileRemote(maxPhoto.photo.remote.id),  // param1: InputFile
-                        null,                                                   // param2: InputThumbnail
-                        new int[0],                                            // param3: int[] addedStickerFileIds
-                        maxPhoto.width,                                        // param4: int width
-                        maxPhoto.height,                                       // param5: int height
-                        photo.caption,                                         // param6: FormattedText
-                        photo.hasSpoiler,                                      // param7: boolean hasSpoiler
-                        null,                                                  // param8: MessageSelfDestructType
-                        false                                                  // param9: boolean hasStickers
+                        new TdApi.InputFileRemote(maxPhoto.photo.remote.id),
+                        null,
+                        new int[0],
+                        maxPhoto.width,
+                        maxPhoto.height,
+                        photo.caption,
+                        photo.hasSpoiler,
+                        null,
+                        false
                 );
             }
             case TdApi.MessageVideo video -> {
-                // InputMessageVideo(InputFile, InputThumbnail, InputFile, int, int[], int, int, int, boolean, FormattedText, boolean, MessageSelfDestructType, boolean)
                 return new TdApi.InputMessageVideo(
-                        new TdApi.InputFileRemote(video.video.video.remote.id),  // param1: InputFile video
-                        video.video.thumbnail != null ?                          // param2: InputThumbnail
+                        new TdApi.InputFileRemote(video.video.video.remote.id),
+                        video.video.thumbnail != null ?
                                 new TdApi.InputThumbnail(
                                         new TdApi.InputFileRemote(video.video.thumbnail.file.remote.id),
                                         video.video.thumbnail.width,
                                         video.video.thumbnail.height
                                 ) : null,
-                        null,                                                    // param3: InputFile animationCover (untuk preview)
-                        video.video.duration,                                    // param4: int duration
-                        new int[0],                                             // param5: int[] addedStickerFileIds
-                        video.video.height,                                       // param6: int width
-                        video.video.width,                                      // param7: int height
-                        0,                                                       // param8: int rotation (0, 90, 180, 270)
-                        video.video.supportsStreaming,                          // param9: boolean supportsStreaming
-                        video.caption,                                          // param10: FormattedText
-                        video.hasSpoiler,                                       // param11: boolean hasSpoiler
-                        null,                                                   // param12: MessageSelfDestructType
-                        false                                                   // param13: boolean hasStickers
+                        null,
+                        video.video.duration,
+                        new int[0],
+                        video.video.height,
+                        video.video.width,
+                        0,
+                        video.video.supportsStreaming,
+                        video.caption,
+                        video.hasSpoiler,
+                        null,
+                        false
                 );
             }
             case TdApi.MessageSticker sticker -> {
