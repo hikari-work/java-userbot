@@ -1,5 +1,6 @@
 package com.yann.demosping.manager;
 
+import com.yann.demosping.plugin.Update;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
@@ -42,20 +43,13 @@ public class OnUpdate {
                         );
                     }
             );
+            logFile.delete();
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
     public void editMessage(Long chatId, Long messageId, String text) {
-        client.send(
-                new TdApi.ParseTextEntities(text, new TdApi.TextParseModeHTML()), formatted -> {
-                    if (formatted.isError()) return;
-                    TdApi.FormattedText formattedText = formatted.get();
-                    client.send(
-                            new TdApi.EditMessageText(chatId, messageId, null, new TdApi.InputMessageText(formattedText, new TdApi.LinkPreviewOptions(), true))
-                    );
-                }
-        );
+        Update.sendMessage(chatId, messageId, text, client);
     }
 }

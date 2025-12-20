@@ -8,7 +8,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
-import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -37,9 +36,13 @@ public class Update {
             }
             Process pLog = new ProcessBuilder("git", "log", "-1", "--pretty=%B").start();
             BufferedReader reader = new BufferedReader(new InputStreamReader(pLog.getInputStream()));
-            String lastCommit = reader.readLine();
+            StringBuilder builder = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                builder.append(line).append("\n");
+            }
 
-            Files.write(Paths.get("log.txt"), lastCommit.getBytes());
+            Files.write(Paths.get("log.txt"), builder.toString().getBytes());
             editMessage(chatId, messageId, "\uD83D\uDD28 [2/4] Maven Build (Clean Package)...");
             Process pBuild = new ProcessBuilder("mvn", "clean", "package", "-DskipTests").start();
             boolean buildSuccess = pBuild.waitFor(2, TimeUnit.MINUTES);
@@ -76,6 +79,10 @@ public class Update {
         }
     }
     public void editMessage(Long chatId, Long messageId, String text) {
+        sendMessage(chatId, messageId, text, client);
+    }
+
+    public static void sendMessage(Long chatId, Long messageId, String text, SimpleTelegramClient client) {
         client.send(
                 new TdApi.ParseTextEntities(text, new TdApi.TextParseModeHTML()), formatted -> {
                     if (formatted.isError()) return;
