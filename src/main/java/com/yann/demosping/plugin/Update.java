@@ -51,8 +51,23 @@ public class Update {
             Files.write(Paths.get("context_data.txt"), contextData.getBytes());
 
             long currentPid = ProcessHandle.current().pid();
-            new ProcessBuilder("nohup", "./update.sh", String.valueOf(currentPid)).start();
-            Thread.sleep(2_000);
+
+            String currentDir = System.getProperty("user.dir");
+            String scriptPath = currentDir + "/update.sh";
+
+            String cmd = String.format("nohup bash %s %d > update_debug.log 2>&1 &", scriptPath, currentPid);
+
+            System.out.println("Running restart command: " + cmd);
+
+            new ProcessBuilder("/bin/bash", "-c", cmd).start();
+
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
+            System.out.println("Bye bye...");
             System.exit(0);
 
 
