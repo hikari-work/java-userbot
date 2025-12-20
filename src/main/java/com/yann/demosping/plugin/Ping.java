@@ -23,7 +23,7 @@ public class Ping {
     private final SimpleTelegramClient client;
 
     @Async
-    @UserBotCommand(commands = {"p", "ping"}, description = "Cek Ping Server")
+    @UserBotCommand(commands = {"p", "ping"}, description = "Cek Ping Server", sudoOnly = true)
     public void pingHandler(TdApi.UpdateNewMessage update, String args) {
         long chatId = update.message.chatId;
         long messageId = update.message.id;
@@ -89,7 +89,6 @@ public class Ping {
         double cpuLoad = osBean.getSystemLoadAverage() * 100;
         int threadCount = threadBean.getThreadCount();
 
-        // GC & Memory Pools (Young/Old Gen)
         long youngUsed = 0, oldUsed = 0;
         for (MemoryPoolMXBean pool : ManagementFactory.getMemoryPoolMXBeans()) {
             String name = pool.getName().toLowerCase();

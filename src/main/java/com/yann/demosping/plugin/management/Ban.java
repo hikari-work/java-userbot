@@ -22,7 +22,7 @@ public class Ban {
     private final SimpleTelegramClient client;
     private final CommandRegistry commandRegistry;
 
-    @UserBotCommand(commands = {"kick", "ban"}, description = "Gunakan reply lalu: .kick -t 1h")
+    @UserBotCommand(commands = {"kick", "ban"}, description = "Gunakan reply lalu: .kick -t 1h", sudoOnly = true)
     public void ban(TdApi.UpdateNewMessage message, String args) {
         long chatId = message.message.chatId;
 

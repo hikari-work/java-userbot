@@ -19,7 +19,8 @@ public class Purge {
 
     @UserBotCommand(
             commands = {"purge", "purgeme", "del"},
-            description = "Purge messages. .purge (reply), .purgeme [count]"
+            description = "Purge messages. .purge (reply), .purgeme [count]",
+            sudoOnly = true
     )
     public void purgeCommands(TdApi.UpdateNewMessage message, String args) {
         long chatId = message.message.chatId;

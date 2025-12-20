@@ -26,7 +26,8 @@ public class Info {
 
     @UserBotCommand(
             commands = {"info", "whois"},
-            description = "Get full user information"
+            description = "Get full user information",
+            sudoOnly = true
     )
     public void getUserInfoHandler(TdApi.UpdateNewMessage message, String args) {
         if (message.message.senderId instanceof TdApi.MessageSenderUser user) {

@@ -1,5 +1,6 @@
 package com.yann.demosping.manager;
 
+import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,6 +16,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class Dispatcher {
 
+    private final SimpleTelegramClient client;
+
     private final CommandRegistry commandRegistry;
 
     private final List<BotInterceptor> interceptors;
@@ -26,6 +29,14 @@ public class Dispatcher {
     public void onUpdateMessage(TdApi.UpdateNewMessage message) {
 
         if (message.message.content instanceof TdApi.MessageText textContent) {
+            long chatId;
+            if (message.message.senderId instanceof TdApi.MessageSenderUser user) {
+                chatId = user.userId;
+            } else if (message.message.chatId > 0) {
+                chatId = message.message.chatId;
+            } else {
+                chatId = 0L;
+            }
             for (BotInterceptor interceptor : interceptors) {
                 try {
                     boolean proceed = interceptor.preHandle(message, textContent.text.text);
@@ -41,6 +52,12 @@ public class Dispatcher {
                 String trigger = parts[0].replace(prefix, "");
                 CommandContainer container = commandRegistry.getCommand(trigger);
                 if (container != null) {
+                    if (commandRegistry.getCommand(trigger).command().sudoOnly()) {
+                        if (chatId == 0L && client.getMe().id != chatId) {
+                            return;
+                        }
+
+                    }
                     log.info("Container is Not Null");
                     try {
                         container.method().invoke(container.bean(), message, parts.length > 1 ? parts[1] : "");

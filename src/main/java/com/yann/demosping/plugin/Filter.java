@@ -21,7 +21,7 @@ public class Filter {
     private final SimpleTelegramClient client;
     private final CommandRegistry commandRegistry;
 
-    @UserBotCommand(commands = {"filter", "filters"}, description = "")
+    @UserBotCommand(commands = {"filter", "filters"}, description = "", sudoOnly = true)
     public void sendFilterMessage(TdApi.UpdateNewMessage message, String args) {
         sendDescription(message.message.chatId, message.message.id);
     }

@@ -27,10 +27,9 @@ public class ModuleStateService {
         String key = KEY_PREFIX + "filters:" + chatId;
         return redisTemplate.opsForHash().entries(key);
     }
-    public boolean deleteFilter(long chatId, String trigger) {
+    public void deleteFilter(long chatId, String trigger) {
         String key = KEY_PREFIX + "filters:" + chatId;
-
-        return redisTemplate.opsForHash().delete(key, trigger) > 0;
+        redisTemplate.opsForHash().delete(key, trigger);
     }
 
     public void addTarget(String moduleName, long id) {

@@ -19,7 +19,7 @@ public class Afk {
 
     @UserBotCommand(commands = {"afk"}, description = """
             Fitur ini untuk setting AFK
-            """)
+            """, sudoOnly = true)
     public void afk(TdApi.UpdateNewMessage message, String args) {
         long chatId = message.message.chatId;
         long messageId = message.message.id;
