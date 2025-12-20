@@ -64,7 +64,7 @@ public class Update {
             try {
                 Thread.sleep(2000);
             } catch (InterruptedException e) {
-                e.printStackTrace();
+                log.info("Interrupted Exception");
             }
 
             System.out.println("Bye bye...");
