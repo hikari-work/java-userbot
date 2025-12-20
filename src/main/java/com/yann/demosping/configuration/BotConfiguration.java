@@ -21,10 +21,17 @@ public class BotConfiguration {
     @Value("${phone.number}")
     private String phoneNumber;
 
+    @Value("${api.hash}")
+    private String apiHash;
+
+    @Value("${api.id}")
+    private Integer apiId;
+
     @Bean
     public TDLibSettings setSettings() {
         Log.setLogMessageHandler(1, new Slf4JLogMessageHandler());
-        TDLibSettings settings = TDLibSettings.create(APIToken.example());
+        APIToken token = new APIToken(apiId, apiHash);
+        TDLibSettings settings = TDLibSettings.create(token);
         Path path = Paths.get("tdlib-user-bot");
         settings.setDatabaseDirectoryPath(path.resolve("data"));
         settings.setDownloadedFilesDirectoryPath(path.resolve("downloads"));

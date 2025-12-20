@@ -4,6 +4,7 @@ import com.yann.demosping.annotations.UserBotCommand;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Component;
 import java.lang.management.*;
 import java.util.List;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class Ping {
@@ -71,7 +73,7 @@ public class Ping {
         OperatingSystemMXBean osBean = (OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
         MemoryMXBean memoryMXBean = ManagementFactory.getMemoryMXBean();
 
-        // Uptime Calculation
+
         long uptimeSecs = runtime.getUptime() / 1000;
         long days = uptimeSecs / 86400;
         long hours = (uptimeSecs % 86400) / 3600;
@@ -100,27 +102,25 @@ public class Ping {
 
         StringBuilder gcInfo = new StringBuilder();
         long totalGcTime = 0;
+        long totalGcCount = 0;
         for (GarbageCollectorMXBean gc : ManagementFactory.getGarbageCollectorMXBeans()) {
             totalGcTime += gc.getCollectionTime();
             gcInfo.append(gc.getName()).append(" ");
         }
 
-        StringBuilder builder = new StringBuilder();
-        builder.append("<b>📊 Platform Status</b>\n");
-        builder.append("<blockquote expandable>");
-        builder.append("<pre>");
-        builder.append("├─ JVM Name   : ").append(runtime.getVmVendor()).append(" ").append(runtime.getVmName()).append("\n");
-        builder.append("├─ CPU Usage  : ").append(String.format("%.2f%%", cpuLoad)).append("\n");
-        builder.append("├─ Uptime     : ").append(String.format("%dd %02d:%02d:%02d", days, hours, mins, secs)).append("\n");
-        builder.append("├─ Threads    : ").append(threadCount).append("\n");
-        builder.append("├─ Heap Used  : ").append(usedMem).append(" / ").append(maxMem).append(" MB\n");
-        builder.append("├─ Young Gen  : ").append(youngUsed).append(" MB\n");
-        builder.append("├─ Old Gen    : ").append(oldUsed).append(" MB\n");
-        builder.append("├─ GC Type    : ").append(gcInfo.toString().trim()).append("\n");
-        builder.append("└─ GC Pause   : ").append(totalGcTime / ManagementFactory.getGarbageCollectorMXBeans().size()).append(" ms");
-        builder.append("</pre>");
-        builder.append("</blockquote>");
-
-        return builder.toString();
+        return "<b>📊 Platform Status</b>\n" +
+                "<blockquote expandable>" +
+                "<pre>" +
+                "├─ JVM Name   : " + runtime.getVmVendor() + " " + runtime.getSpecVendor() + "\n" +
+                "├─ CPU Usage  : " + String.format("%.2f%%", cpuLoad) + "\n" +
+                "├─ Uptime     : " + String.format("%dd %02d:%02d:%02d", days, hours, mins, secs) + "\n" +
+                "├─ Threads    : " + threadCount + "\n" +
+                "├─ Heap Used  : " + usedMem + " / " + maxMem + " MB\n" +
+                "├─ Young Gen  : " + youngUsed + " MB\n" +
+                "├─ Old Gen    : " + oldUsed + " MB\n" +
+                "├─ GC Type    : " + gcInfo.toString().trim() + "\n" +
+                "└─ GC Pause   : " + totalGcTime / ManagementFactory.getGarbageCollectorMXBeans().getLast().getCollectionCount() + " ms" +
+                "</pre>" +
+                "</blockquote>";
     }
 }
