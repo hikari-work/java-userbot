@@ -39,41 +39,37 @@ public class ListMessage {
         final int finalCount = count;
 
         if (link == null || link.isEmpty()) {
-            sendHtml(currentChatId, commandMsgId, "❌ Link required. Use <code>.copy -from [LINK]</code>");
+            sendHtml(currentChatId, commandMsgId);
             return;
         }
 
         sendHtml(currentChatId, commandMsgId, "⏳ <b>Fetching " + finalCount + " msgs...</b>", sentStatus -> {
             long statusMsgId = sentStatus.id;
 
-            messageLinkResolver.resolve(link).thenAccept(startMsg -> {
+            messageLinkResolver.resolve(link).thenAccept(startMsg -> client.send(new TdApi.GetChat(startMsg.chatId), chatRes -> {
 
-                client.send(new TdApi.GetChat(startMsg.chatId), chatRes -> {
+                int offset = -finalCount + 1;
+                client.send(new TdApi.GetChatHistory(startMsg.chatId, startMsg.id, offset, finalCount, false), historyRes -> {
+                    if (historyRes.isError()) {
+                        editHtml(currentChatId, statusMsgId, "❌ Error: " + historyRes.getError().message);
+                        return;
+                    }
 
-                    int offset = -finalCount + 1;
-                    client.send(new TdApi.GetChatHistory(startMsg.chatId, startMsg.id, offset, finalCount, false), historyRes -> {
-                        if (historyRes.isError()) {
-                            editHtml(currentChatId, statusMsgId, "❌ Error: " + historyRes.getError().message);
-                            return;
-                        }
+                    TdApi.Messages messages = historyRes.get();
+                    if (messages.totalCount == 0) {
+                        editHtml(currentChatId, statusMsgId, "❌ Kosong / Tidak ditemukan.");
+                        return;
+                    }
 
-                        TdApi.Messages messages = historyRes.get();
-                        if (messages.totalCount == 0) {
-                            editHtml(currentChatId, statusMsgId, "❌ Kosong / Tidak ditemukan.");
-                            return;
-                        }
+                    List<TdApi.Message> msgListMessage = new ArrayList<>(List.of(messages.messages));
+                    Collections.reverse(msgListMessage);
 
-                        List<TdApi.Message> msgListMessage = new ArrayList<>(List.of(messages.messages));
-                        Collections.reverse(msgListMessage);
+                    editHtml(currentChatId, statusMsgId, "🚀 <b>Sending " + msgListMessage.size() + " messages...</b>");
 
-                        editHtml(currentChatId, statusMsgId, "🚀 <b>Sending " + msgListMessage.size() + " messages...</b>");
-
-                        sendNextLink(currentChatId, msgListMessage.iterator(), prefix, statusMsgId, 0);
-                        deleteMessage(currentChatId, List.of(commandMsgId, statusMsgId));
-                    });
+                    sendNextLink(currentChatId, msgListMessage.iterator(), prefix, statusMsgId, 0);
+                    deleteMessage(currentChatId, List.of(commandMsgId, statusMsgId));
                 });
-
-            }).exceptionally(ex -> {
+            })).exceptionally(ex -> {
                 editHtml(currentChatId, statusMsgId, "❌ Link Error: " + ex.getMessage());
                 return null;
             });
@@ -113,9 +109,7 @@ public class ListMessage {
 
     private void sendRawLink(long chatId, String text, Iterator<TdApi.Message> iter, String prefix, long statusId, int count) {
         client.send(new TdApi.SendMessage(chatId, 0, null, null, null,
-                new TdApi.InputMessageText(new TdApi.FormattedText(text, new TdApi.TextEntity[0]), new TdApi.LinkPreviewOptions(), false)), res -> {
-            sendNextLink(chatId, iter, prefix, statusId, count + 1);
-        });
+                new TdApi.InputMessageText(new TdApi.FormattedText(text, new TdApi.TextEntity[0]), new TdApi.LinkPreviewOptions(), false)), res -> sendNextLink(chatId, iter, prefix, statusId, count + 1));
     }
 
     private String generatePrivateLink(long chatId, long messageId) {
@@ -127,14 +121,14 @@ public class ListMessage {
         return "https://t.me/c/" + chatIdStr + "/" + publicMsgId;
     }
 
-    private void sendHtml(long chatId, long replyToMsgId, String text) {
-        sendHtml(chatId, replyToMsgId, text, null);
+    private void sendHtml(long chatId, long replyToMsgId) {
+        sendHtml(chatId, replyToMsgId, "❌ Link required. Use <code>.copy -from [LINK]</code>", null);
     }
 
     private void sendHtml(long chatId, long replyToMsgId, String text, Consumer<TdApi.Message> onSuccess) {
         client.send(new TdApi.ParseTextEntities(text, new TdApi.TextParseModeHTML()), res -> {
             if (res.isError()) {
-                log.error("❌ Gagal Parse HTML: " + res.getError().message);
+                log.error("❌ Gagal Parse HTML: {}", res.getError().message);
                 return;
             }
             client.send(new TdApi.SendMessage(chatId, 0, new TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0), null, null,
