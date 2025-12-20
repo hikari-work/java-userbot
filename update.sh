@@ -1,17 +1,36 @@
 #!/bin/bash
 
+# Arahkan semua output ke log agar ketahuan errornya
+exec > >(tee -i update_debug.log)
+exec 2>&1
+
+echo "=== START UPDATE SCRIPT ==="
+echo "Date: $(date)"
+
+# 1. Definisi Path Absolut (GANTI INI SESUAI VPS ANDA)
+JAVA_CMD="/usr/bin/java"  # Hasil dari 'which java'
+WORK_DIR="/home/viandra-stefani/java-userbot" # Hasil dari 'pwd' di folder project
 JAR_NAME="userbot.jar"
-PID_TO_KILL=$1
 
-echo "Menunggu bot lama mati..."
-sleep 5
+cd $WORK_DIR
 
-# Pastikan benar-benar mati
-if [ -n "$PID_TO_KILL" ]; then
-    kill -9 $PID_TO_KILL 2>/dev/null
+# 2. Kill PID Lama
+OLD_PID=$1
+if [ -n "$OLD_PID" ]; then
+    echo "Killing Old PID: $OLD_PID"
+    kill -9 $OLD_PID 2>/dev/null
 fi
+
+# Tunggu proses benar-benar hilang
+sleep 3
 pkill -f $JAR_NAME
 
-echo "Menjalankan bot baru..."
-# Koreksi typo path '/taget/' menjadi 'target/' dan fix heap size options
-nohup java -Xmx128m -Xmn48m -XX:+UseG1GC -jar target/$JAR_NAME >> bot_runtime.log 2>&1 &
+# 3. Jalankan Baru dengan Path Lengkap
+if [ -f "target/$JAR_NAME" ]; then
+    echo "Starting new bot..."
+    # 'setsid' di sini juga membantu
+    setsid $JAVA_CMD -Xmx256m -jar target/$JAR_NAME > bot_runtime.log 2>&1 &
+    echo "New bot launched."
+else
+    echo "CRITICAL: File target/$JAR_NAME not found inside $WORK_DIR"
+fi

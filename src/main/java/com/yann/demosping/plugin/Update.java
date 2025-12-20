@@ -55,7 +55,7 @@ public class Update {
             String currentDir = System.getProperty("user.dir");
             String scriptPath = currentDir + "/update.sh";
 
-            String cmd = String.format("nohup bash %s %d > update_debug.log 2>&1 &", scriptPath, currentPid);
+            String cmd = String.format("setsid bash %s %d > update_debug.log 2>&1 &", scriptPath, currentPid);
 
             System.out.println("Running restart command: " + cmd);
 
