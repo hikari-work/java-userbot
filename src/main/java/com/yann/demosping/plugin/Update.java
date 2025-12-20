@@ -4,7 +4,6 @@ import com.yann.demosping.annotations.UserBotCommand;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
@@ -14,7 +13,6 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.concurrent.TimeUnit;
 
-@Slf4j
 @Component
 @RequiredArgsConstructor
 public class Update {
@@ -23,7 +21,6 @@ public class Update {
 
     @UserBotCommand(commands = {"update"}, description = "", sudoOnly = true)
     public void update(TdApi.UpdateNewMessage message, String args) {
-        log.info("Updating Message Received");
         long chatId = message.message.chatId;
         long messageId = message.message.id;
         editMessage(chatId, messageId, "⏳ [1/4] Processing Git Pull...");
