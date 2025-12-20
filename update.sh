@@ -6,9 +6,7 @@ exec 2>&1
 
 echo "=== START UPDATE SCRIPT ==="
 echo "Date: $(date)"
-
-# 1. Definisi Path Absolut (GANTI INI SESUAI VPS ANDA)
-JAVA_CMD="/usr/bin/java"  # Hasil dari 'which java'
+JAVA_CMD="/home/viandra-stefani/.sdkman/candidates/java/current/bin/java"  # Hasil dari 'which java'
 WORK_DIR="/home/viandra-stefani/java-userbot" # Hasil dari 'pwd' di folder project
 JAR_NAME="userbot.jar"
 
