@@ -103,10 +103,17 @@ public class Ping {
         StringBuilder gcInfo = new StringBuilder();
         long totalGcTime = 0;
         long totalGcCount = 0;
+
         for (GarbageCollectorMXBean gc : ManagementFactory.getGarbageCollectorMXBeans()) {
-            totalGcTime += gc.getCollectionTime();
+            long count = gc.getCollectionCount();
+            long time = gc.getCollectionTime();
+            if (count > 0) {
+                totalGcCount += count;
+                totalGcTime += time;
+            }
             gcInfo.append(gc.getName()).append(" ");
         }
+        long avgPause = (totalGcCount > 0) ? (totalGcTime / totalGcCount) : 0;
 
         return "<b>📊 Platform Status</b>\n" +
                 "<blockquote expandable>" +
@@ -119,7 +126,7 @@ public class Ping {
                 "├─ Young Gen  : " + youngUsed + " MB\n" +
                 "├─ Old Gen    : " + oldUsed + " MB\n" +
                 "├─ GC Type    : " + gcInfo.toString().trim() + "\n" +
-                "└─ GC Pause   : " + totalGcTime / ManagementFactory.getGarbageCollectorMXBeans().getLast().getCollectionCount() + " ms" +
+                "└─ GC Pause   : " + avgPause + " ms" +
                 "</pre>" +
                 "</blockquote>";
     }
