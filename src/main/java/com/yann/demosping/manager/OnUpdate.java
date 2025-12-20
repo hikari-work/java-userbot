@@ -28,16 +28,33 @@ public class OnUpdate {
             String[] parts = content.split(":");
             long chatId = Long.parseLong(parts[0]);
             long messageId = Long.parseLong(parts[1]);
+
             editMessage(chatId, messageId, "✅ [4/4] Bot Updated Successfully!");
             file.delete();
+
             File logFile = new File("log.txt");
             if (!logFile.exists()) {
                 return;
             }
-            String log = new String(Files.readAllBytes(logFile.toPath()));
+
+            String rawLog = new String(Files.readAllBytes(logFile.toPath()));
+
+            System.out.println("=== DEBUG LOG CONTENT ===");
+            System.out.println(rawLog);
+            System.out.println("=========================");
+            String safeLog = rawLog
+                    .replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;");
+
             client.send(
-                    new TdApi.ParseTextEntities("<blockquote expandable>" + log + "</blockquote>", new TdApi.TextParseModeHTML()), formatted -> {
-                        if (formatted.isError()) return;
+                    new TdApi.ParseTextEntities("<b>Update Log:</b>\n<blockquote expandable>" + safeLog + "</blockquote>", new TdApi.TextParseModeHTML()),
+                    formatted -> {
+                        if (formatted.isError()) {
+                            System.err.println("Gagal parsing HTML: " + formatted.getError().message);
+                            client.send(new TdApi.SendMessage(chatId, 0, null, null, null, new TdApi.InputMessageText(new TdApi.FormattedText(rawLog, new TdApi.TextEntity[0]), null, false)));
+                            return;
+                        }
                         client.send(
                                 new TdApi.SendMessage(chatId, 0, null, null, null, new TdApi.InputMessageText(formatted.get(), new TdApi.LinkPreviewOptions(), false))
                         );
@@ -45,7 +62,7 @@ public class OnUpdate {
             );
             logFile.delete();
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            e.printStackTrace();
         }
     }
 
