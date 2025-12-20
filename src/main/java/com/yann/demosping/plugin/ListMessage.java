@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import java.util.function.Consumer;
 
 @Slf4j
 @Component
@@ -68,6 +69,7 @@ public class ListMessage {
                         editHtml(currentChatId, statusMsgId, "🚀 <b>Sending " + msgListMessage.size() + " messages...</b>");
 
                         sendNextLink(currentChatId, msgListMessage.iterator(), prefix, statusMsgId, 0);
+                        deleteMessage(currentChatId, List.of(commandMsgId, statusMsgId));
                     });
                 });
 
@@ -129,7 +131,7 @@ public class ListMessage {
         sendHtml(chatId, replyToMsgId, text, null);
     }
 
-    private void sendHtml(long chatId, long replyToMsgId, String text, java.util.function.Consumer<TdApi.Message> onSuccess) {
+    private void sendHtml(long chatId, long replyToMsgId, String text, Consumer<TdApi.Message> onSuccess) {
         client.send(new TdApi.ParseTextEntities(text, new TdApi.TextParseModeHTML()), res -> {
             if (res.isError()) {
                 log.error("❌ Gagal Parse HTML: " + res.getError().message);
@@ -150,5 +152,10 @@ public class ListMessage {
             client.send(new TdApi.EditMessageText(chatId, msgId, null,
                     new TdApi.InputMessageText(res.get(), new TdApi.LinkPreviewOptions(), false)));
         });
+    }
+    private void deleteMessage(long chatId, List<Long> messageId) {
+        client.send(
+                new TdApi.DeleteMessages(chatId, messageId.stream().mapToLong(l -> l).toArray(), true)
+        );
     }
 }

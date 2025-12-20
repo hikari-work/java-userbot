@@ -61,7 +61,7 @@ public class AFKInterceptor implements BotInterceptor {
     private void disableAfk(TdApi.UpdateNewMessage message) {
         long chatId = message.message.chatId;
         String sb = "<b>Kembali Online</b>\n" +
-                "AFK Setelah : <code>" + moduleStateService.getAfkDuration() + "</code>";
+                "Setelah AFK : <code>" + moduleStateService.getAfkDuration() + "</code>";
         client.send(new TdApi.ParseTextEntities(sb, new TdApi.TextParseModeHTML()), parsedText -> {
             if (parsedText.isError()) {
                 return;
