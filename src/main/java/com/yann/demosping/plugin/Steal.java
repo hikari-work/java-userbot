@@ -199,13 +199,16 @@ public class Steal {
 
                     updateStatusInOriginalChat(message.chatId, commandMessageId, "⬆️ Uploading to Saved Messages...");
 
+                    log.info("→ Calling getSavedMessagesChatId()...");
                     getSavedMessagesChatId().thenAccept(savedChatId -> {
-                        log.info("✓ Got Saved Messages chat ID: {}", savedChatId);
+                        log.info("✓ INSIDE thenAccept callback - Got Saved Messages chat ID: {}", savedChatId);
 
                         TdApi.InputFile inputFile = new TdApi.InputFileLocal(localPath);
                         log.info("✓ Created InputFileLocal with path: {}", localPath);
 
+                        log.info("→ Calling createInputContent...");
                         TdApi.InputMessageContent content = createInputContent(message.content, inputFile);
+                        log.info("← Returned from createInputContent");
 
                         if (content == null) {
                             log.error("✗✗✗ createInputContent returned NULL!");
@@ -215,9 +218,10 @@ public class Steal {
                             return;
                         }
 
-                        log.info("✓ Created InputMessageContent: {}", content.getClass().getSimpleName());
+                        log.info("✓ Content is NOT null, type: {}", content.getClass().getSimpleName());
 
                         // Create SendMessage request
+                        log.info("→ Creating SendMessage request...");
                         TdApi.SendMessage sendRequest = new TdApi.SendMessage(
                                 savedChatId,
                                 0,  // messageThreadId
@@ -226,38 +230,50 @@ public class Steal {
                                 null,  // replyMarkup
                                 content
                         );
+                        log.info("✓ SendMessage request created");
 
-                        log.info("→ Sending media to chat {}...", savedChatId);
+                        log.info("→ About to call client.send() with SendMessage...");
                         log.info("  SendMessage details:");
                         log.info("    chatId: {}", sendRequest.chatId);
                         log.info("    content type: {}", sendRequest.inputMessageContent.getClass().getSimpleName());
 
-                        client.send(sendRequest,
-                                this.handleResult(
-                                        uploadResult -> {
-                                            TdApi.Message sentMessage = uploadResult.get();
-                                            log.info("✓✓✓ SUCCESS! Media uploaded to Saved Messages!");
-                                            log.info("  Uploaded message ID: {}", sentMessage.id);
-                                            log.info("  Message chat ID: {}", sentMessage.chatId);
-                                            log.info("  Sent message content type: {}", sentMessage.content.getClass().getSimpleName());
-                                            updateStatusInOriginalChat(message.chatId, commandMessageId, "✅ Saved to Saved Messages");
-                                            deleteMessageDelayed(message.chatId, commandMessageId, 2000);
-                                            cleanupFile(localPath);
-                                        },
-                                        error -> {
-                                            log.error("✗✗✗ FAILED to upload to Saved Messages!");
-                                            log.error("Error code: {}, Error message: {}", error.code, error.message);
-                                            log.error("Full error: {}", error);
-                                            updateStatusInOriginalChat(message.chatId, commandMessageId, "❌ Failed to upload: " + error.message);
-                                            cleanupFile(localPath);
-                                        }
-                                ));
+                        try {
+                            log.info("→→→ CALLING client.send() NOW...");
+                            client.send(sendRequest,
+                                    this.handleResult(
+                                            uploadResult -> {
+                                                log.info("✓✓✓ INSIDE SUCCESS CALLBACK!");
+                                                TdApi.Message sentMessage = uploadResult.get();
+                                                log.info("✓✓✓ SUCCESS! Media uploaded to Saved Messages!");
+                                                log.info("  Uploaded message ID: {}", sentMessage.id);
+                                                log.info("  Message chat ID: {}", sentMessage.chatId);
+                                                log.info("  Sent message content type: {}", sentMessage.content.getClass().getSimpleName());
+                                                updateStatusInOriginalChat(message.chatId, commandMessageId, "✅ Saved to Saved Messages");
+                                                deleteMessageDelayed(message.chatId, commandMessageId, 2000);
+                                                cleanupFile(localPath);
+                                            },
+                                            error -> {
+                                                log.error("✗✗✗ INSIDE ERROR CALLBACK!");
+                                                log.error("✗✗✗ FAILED to upload to Saved Messages!");
+                                                log.error("Error code: {}, Error message: {}", error.code, error.message);
+                                                log.error("Full error: {}", error);
+                                                updateStatusInOriginalChat(message.chatId, commandMessageId, "❌ Failed to upload: " + error.message);
+                                                cleanupFile(localPath);
+                                            }
+                                    ));
+                            log.info("✓ client.send() call completed (callback registered)");
+                        } catch (Exception e) {
+                            log.error("✗✗✗ EXCEPTION during client.send() call!", e);
+                            updateStatusInOriginalChat(message.chatId, commandMessageId, "❌ Exception during send: " + e.getMessage());
+                            cleanupFile(localPath);
+                        }
                     }).exceptionally(e -> {
                         log.error("✗✗✗ EXCEPTION in getSavedMessagesChatId during upload", e);
                         updateStatusInOriginalChat(message.chatId, commandMessageId, "❌ Failed to get Saved Messages: " + e.getMessage());
                         cleanupFile(localPath);
                         return null;
                     });
+                    log.info("✓ getSavedMessagesChatId().thenAccept() registered");
                 }, error -> {
                     log.error("✗✗✗ FAILED to download file!");
                     log.error("Error code: {}, Error message: {}", error.code, error.message);
