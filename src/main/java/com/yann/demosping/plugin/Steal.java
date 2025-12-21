@@ -492,18 +492,33 @@ public class Steal {
         try {
             File original = new File(originalPath);
             String fileName = original.getName();
-            String extension = fileName.substring(fileName.lastIndexOf('.'));
-            String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
+            String extension = "";
+
+            int i = fileName.lastIndexOf('.');
+            if (i > 0) {
+                extension = fileName.substring(i);
+            }
+
+            String baseName = (i > 0) ? fileName.substring(0, i) : fileName;
 
             File modified = new File(original.getParent() + "/temp/" + UUID.randomUUID() + "/", baseName + "_reup" + extension);
 
+            File parentDir = modified.getParentFile();
+            if (!parentDir.exists()) {
+                boolean dirsCreated = parentDir.mkdirs();
+                if (!dirsCreated) {
+                    log.error("Failed to create directories: {}", parentDir.getAbsolutePath());
+                    return originalPath; // Fallback if we can't create folder
+                }
+            }
+
             log.info("  Copying {} to {}", originalPath, modified.getAbsolutePath());
 
-            Files.copy(original.toPath(), modified.toPath(),
-                    StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(original.toPath(), modified.toPath(), StandardCopyOption.REPLACE_EXISTING);
 
             log.info("  File copied successfully");
             return modified.getAbsolutePath();
+
         } catch (Exception e) {
             log.error("Failed to modify file, using original", e);
             return originalPath;
