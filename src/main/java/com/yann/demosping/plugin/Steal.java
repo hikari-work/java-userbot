@@ -13,6 +13,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -109,7 +111,7 @@ public class Steal {
                                 result -> {
                                     log.info("✓✓✓ SUCCESS! Message sent to Saved Messages. Message ID: {}", result.get().id);
                                     updateStatusInOriginalChat(message.chatId, commandMessageId, "✅ Saved to Saved Messages");
-                                    deleteMessageDelayed(message.chatId, commandMessageId, 2000);
+                                    deleteMessageDelayed(message.chatId, commandMessageId);
                                 },
                                 error -> {
                                     log.error("✗✗✗ FAILED to send to Saved Messages!");
@@ -168,7 +170,7 @@ public class Steal {
                             result -> {
                                 log.info("✓✓✓ SUCCESS! Text sent to Saved Messages. Message ID: {}", result.get().id);
                                 updateStatusInOriginalChat(originalChatId, commandMessageId, "✅ Saved to Saved Messages");
-                                deleteMessageDelayed(originalChatId, commandMessageId, 2000);
+                                deleteMessageDelayed(originalChatId, commandMessageId);
                             },
                             error -> {
                                 log.error("✗✗✗ FAILED to send text to Saved Messages!");
@@ -203,8 +205,12 @@ public class Steal {
                     getSavedMessagesChatId().thenAccept(savedChatId -> {
                         log.info("✓ INSIDE thenAccept callback - Got Saved Messages chat ID: {}", savedChatId);
 
-                        TdApi.InputFile inputFile = new TdApi.InputFileLocal(localPath);
-                        log.info("✓ Created InputFileLocal with path: {}", localPath);
+                        // Modify file to force re-upload
+                        String uploadPath = modifyFileForReupload(localPath);
+                        log.info("✓ File modified for reupload: {}", uploadPath);
+
+                        TdApi.InputFile inputFile = new TdApi.InputFileLocal(uploadPath);
+                        log.info("✓ Created InputFileLocal with path: {}", uploadPath);
 
                         log.info("→ Calling createInputContent...");
                         TdApi.InputMessageContent content = createInputContent(message.content, inputFile);
@@ -215,6 +221,7 @@ public class Steal {
                             log.error("Message content type was: {}", message.content.getClass().getSimpleName());
                             updateStatusInOriginalChat(message.chatId, commandMessageId, "❌ Failed to create input content (Type Unknown).");
                             cleanupFile(localPath);
+                            if (!uploadPath.equals(localPath)) cleanupFile(uploadPath);
                             return;
                         }
 
@@ -224,10 +231,10 @@ public class Steal {
                         log.info("→ Creating SendMessage request...");
                         TdApi.SendMessage sendRequest = new TdApi.SendMessage(
                                 savedChatId,
-                                0,  // messageThreadId
-                                null,  // replyTo
-                                null,  // options
-                                null,  // replyMarkup
+                                0,
+                                null,
+                                null,
+                                null,
                                 content
                         );
                         log.info("✓ SendMessage request created");
@@ -249,8 +256,9 @@ public class Steal {
                                                 log.info("  Message chat ID: {}", sentMessage.chatId);
                                                 log.info("  Sent message content type: {}", sentMessage.content.getClass().getSimpleName());
                                                 updateStatusInOriginalChat(message.chatId, commandMessageId, "✅ Saved to Saved Messages");
-                                                deleteMessageDelayed(message.chatId, commandMessageId, 2000);
+                                                deleteMessageDelayed(message.chatId, commandMessageId);
                                                 cleanupFile(localPath);
+                                                if (!uploadPath.equals(localPath)) cleanupFile(uploadPath);
                                             },
                                             error -> {
                                                 log.error("✗✗✗ INSIDE ERROR CALLBACK!");
@@ -259,6 +267,7 @@ public class Steal {
                                                 log.error("Full error: {}", error);
                                                 updateStatusInOriginalChat(message.chatId, commandMessageId, "❌ Failed to upload: " + error.message);
                                                 cleanupFile(localPath);
+                                                if (!uploadPath.equals(localPath)) cleanupFile(uploadPath);
                                             }
                                     ));
                             log.info("✓ client.send() call completed (callback registered)");
@@ -266,6 +275,7 @@ public class Steal {
                             log.error("✗✗✗ EXCEPTION during client.send() call!", e);
                             updateStatusInOriginalChat(message.chatId, commandMessageId, "❌ Exception during send: " + e.getMessage());
                             cleanupFile(localPath);
+                            if (!uploadPath.equals(localPath)) cleanupFile(uploadPath);
                         }
                     }).exceptionally(e -> {
                         log.error("✗✗✗ EXCEPTION in getSavedMessagesChatId during upload", e);
@@ -337,10 +347,10 @@ public class Steal {
         updateStatus(chatId, messageId, text);
     }
 
-    private void deleteMessageDelayed(long chatId, long messageId, long delayMs) {
+    private void deleteMessageDelayed(long chatId, long messageId) {
         new Thread(() -> {
             try {
-                Thread.sleep(delayMs);
+                Thread.sleep((long) 2000);
                 deleteMessage(chatId, messageId);
             } catch (InterruptedException e) {
                 log.warn("Delete message delay interrupted", e);
@@ -427,8 +437,18 @@ public class Steal {
         log.info("=== REUPLOAD MEDIA (LINK MODE) START ===");
         log.info("Chat ID: {}, Message ID: {}, Local path: {}", chatId, messageId, localPath);
 
-        TdApi.InputFile inputFile = new TdApi.InputFileLocal(localPath);
-        log.info("✓ Created InputFileLocal");
+        String uploadPath = localPath;
+        boolean needsMetadataStrip = originalMessage.content instanceof TdApi.MessagePhoto ||
+                originalMessage.content instanceof TdApi.MessageVideo;
+
+        if (needsMetadataStrip) {
+            log.info("→ File needs metadata modification to force upload");
+            uploadPath = modifyFileForReupload(localPath);
+            log.info("✓ Modified file path: {}", uploadPath);
+        }
+
+        TdApi.InputFile inputFile = new TdApi.InputFileLocal(uploadPath);
+        log.info("✓ Created InputFileLocal with path: {}", uploadPath);
 
         log.info("→ Calling createInputContent...");
         TdApi.InputMessageContent content = createInputContent(originalMessage.content, inputFile);
@@ -437,12 +457,14 @@ public class Steal {
         if (content == null) {
             log.error("✗ Content is NULL!");
             updateStatus(chatId, messageId, "❌ Failed to create input content (Type Unknown).");
+            if (!uploadPath.equals(localPath)) cleanupFile(uploadPath);
             return;
         }
 
         log.info("✓ Content created: {}", content.getClass().getSimpleName());
         log.info("→ Sending message to chat {}...", chatId);
 
+        String finalUploadPath = uploadPath;
         client.send(new TdApi.SendMessage(chatId, 0, null, null, null, content),
                 this.handleResult(
                         result -> {
@@ -450,14 +472,41 @@ public class Steal {
                             log.info("  Message ID: {}", result.get().id);
                             deleteMessage(chatId, messageId);
                             cleanupFile(localPath);
+                            if (!finalUploadPath.equals(localPath)) cleanupFile(finalUploadPath);
                         },
                         error -> {
                             log.error("✗✗✗ Upload FAILED!");
                             log.error("  Error: {}", error.message);
                             updateStatus(chatId, messageId, "❌ Failed to upload: " + error.message);
+                            if (!finalUploadPath.equals(localPath)) cleanupFile(finalUploadPath);
                         }
                 ));
         log.info("✓ Send request registered");
+    }
+
+    /**
+     * Modifies file by creating a copy with stripped metadata to force Telegram to treat it as new
+     */
+    private String modifyFileForReupload(String originalPath) {
+        try {
+            File original = new File(originalPath);
+            String fileName = original.getName();
+            String extension = fileName.substring(fileName.lastIndexOf('.'));
+            String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
+
+            File modified = new File(original.getParent(), baseName + "_reup" + extension);
+
+            log.info("  Copying {} to {}", originalPath, modified.getAbsolutePath());
+
+            Files.copy(original.toPath(), modified.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING);
+
+            log.info("  File copied successfully");
+            return modified.getAbsolutePath();
+        } catch (Exception e) {
+            log.error("Failed to modify file, using original", e);
+            return originalPath;
+        }
     }
 
     private TdApi.InputMessageContent createInputContent(TdApi.MessageContent msgContent, TdApi.InputFile inputFile) {
