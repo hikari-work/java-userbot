@@ -107,7 +107,8 @@ public class Log {
     }
 
     private void startLiveLog(long chatId, long messageId) {
-        editMessage(chatId, messageId, "🖥️ <b>Starting Live Log...</b>");
+        String tail = getLogDetails("tail", 10);
+        editMessage(chatId, messageId, "🖥️ <b>Starting Live Log...</b>\n" + "<blockquote expandable>" + tail + "</blockquote>");
 
         LinkedList<String> logBuffer = new LinkedList<>();
         int MAX_BUFFER_LINES = 15;
@@ -134,7 +135,6 @@ public class Log {
                         String safeLogs = logs.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
                         String fullText = "🖥️ <b>Live Log (tail -f):</b>\n<blockquote expandable>" + safeLogs + "</blockquote>";
 
-                        // PATTERN YANG BENAR: Parse -> Edit
                         client.send(new TdApi.ParseTextEntities(fullText, new TdApi.TextParseModeHTML()), parseResult -> {
                             if (parseResult.isError()) {
                                 System.err.println("Parse Error: " + parseResult.getError());
