@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.Map;
@@ -508,7 +509,7 @@ public class Steal {
                 boolean dirsCreated = parentDir.mkdirs();
                 if (!dirsCreated) {
                     log.error("Failed to create directories: {}", parentDir.getAbsolutePath());
-                    return originalPath; // Fallback if we can't create folder
+                    return originalPath;
                 }
             }
 
@@ -516,7 +517,11 @@ public class Steal {
 
             Files.copy(original.toPath(), modified.toPath(), StandardCopyOption.REPLACE_EXISTING);
 
-            log.info("  File copied successfully");
+            try (FileOutputStream fos = new FileOutputStream(modified, true)) {
+                fos.write((int) (Math.random() * 255));
+            }
+
+            log.info("  File copied and hash modified successfully");
             return modified.getAbsolutePath();
 
         } catch (Exception e) {
