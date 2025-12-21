@@ -132,7 +132,7 @@ public class Log {
                         }
 
                         String safeLogs = logs.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
-                        String fullText = "🖥️ <b>Live Log (tail -f):</b>\n<pre><code class=\"language-log\">" + safeLogs + "</code></pre>";
+                        String fullText = "🖥️ <b>Live Log (tail -f):</b>\n<blockquote expandable>" + safeLogs + "</blockquote>";
 
                         // PATTERN YANG BENAR: Parse -> Edit
                         client.send(new TdApi.ParseTextEntities(fullText, new TdApi.TextParseModeHTML()), parseResult -> {
@@ -174,7 +174,7 @@ public class Log {
 
     private void sendOutputMessage(long chatId, long messageId, String title, String content) {
         String safeContent = content.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
-        String fullText = "📄 <b>" + title + "</b>\n<pre><code class=\"language-log\">" + safeContent + "</code></pre>";
+        String fullText = "📄 <b>" + title + "</b>\n<blockquote expandable>" + safeContent + "</blockquote>";
 
         editMessage(chatId, messageId, fullText);
     }
