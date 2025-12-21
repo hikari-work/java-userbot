@@ -283,37 +283,53 @@ public class Steal {
 
     private CompletableFuture<Long> getSavedMessagesChatId() {
         log.info("=== GET SAVED MESSAGES CHAT ID START ===");
+        log.info("Thread: {}", Thread.currentThread().getName());
         CompletableFuture<Long> future = new CompletableFuture<>();
 
-        // Use GetMe to get the current user, then load the chat
-        client.send(new TdApi.GetMe(), this.handleResult(
-                meResult -> {
-                    long myUserId = meResult.get().id;
-                    log.info("Current user ID from GetMe: {}", myUserId);
+        try {
+            log.info("→ Calling client.send(GetMe)...");
+            client.send(new TdApi.GetMe(), this.handleResult(
+                    meResult -> {
+                        log.info("✓ INSIDE GetMe SUCCESS callback");
+                        long myUserId = meResult.get().id;
+                        log.info("Current user ID from GetMe: {}", myUserId);
 
-                    // Load the chat first before trying to send
-                    client.send(new TdApi.CreatePrivateChat(myUserId, true), // force = true to ensure it's loaded
-                            this.handleResult(
-                                    chatResult -> {
-                                        long chatId = chatResult.get().id;
-                                        log.info("✓✓✓ Saved Messages chat ID obtained: {}", chatId);
-                                        log.info("Chat type: {}", chatResult.get().type.getClass().getSimpleName());
-                                        future.complete(chatId);
-                                    },
-                                    error -> {
-                                        log.error("✗✗✗ Failed to create/get private chat!");
-                                        log.error("Error code: {}, Error message: {}", error.code, error.message);
-                                        future.completeExceptionally(new RuntimeException("Failed to get Saved Messages chat: " + error.message));
-                                    }
-                            ));
-                },
-                error -> {
-                    log.error("✗✗✗ Failed to get current user!");
-                    log.error("Error code: {}, Error message: {}", error.code, error.message);
-                    future.completeExceptionally(new RuntimeException("Failed to get current user: " + error.message));
-                }
-        ));
+                        log.info("→ Calling client.send(CreatePrivateChat)...");
+                        // Load the chat first before trying to send
+                        client.send(new TdApi.CreatePrivateChat(myUserId, true), // force = true to ensure it's loaded
+                                this.handleResult(
+                                        chatResult -> {
+                                            log.info("✓ INSIDE CreatePrivateChat SUCCESS callback");
+                                            long chatId = chatResult.get().id;
+                                            log.info("✓✓✓ Saved Messages chat ID obtained: {}", chatId);
+                                            log.info("Chat type: {}", chatResult.get().type.getClass().getSimpleName());
+                                            log.info("→ Completing future with chatId: {}", chatId);
+                                            future.complete(chatId);
+                                            log.info("✓ Future completed");
+                                        },
+                                        error -> {
+                                            log.error("✗ INSIDE CreatePrivateChat ERROR callback");
+                                            log.error("✗✗✗ Failed to create/get private chat!");
+                                            log.error("Error code: {}, Error message: {}", error.code, error.message);
+                                            future.completeExceptionally(new RuntimeException("Failed to get Saved Messages chat: " + error.message));
+                                        }
+                                ));
+                        log.info("✓ CreatePrivateChat send() registered");
+                    },
+                    error -> {
+                        log.error("✗ INSIDE GetMe ERROR callback");
+                        log.error("✗✗✗ Failed to get current user!");
+                        log.error("Error code: {}, Error message: {}", error.code, error.message);
+                        future.completeExceptionally(new RuntimeException("Failed to get current user: " + error.message));
+                    }
+            ));
+            log.info("✓ GetMe send() registered");
+        } catch (Exception e) {
+            log.error("✗✗✗ EXCEPTION in getSavedMessagesChatId", e);
+            future.completeExceptionally(e);
+        }
 
+        log.info("→ Returning CompletableFuture (may not be completed yet)");
         return future;
     }
 
