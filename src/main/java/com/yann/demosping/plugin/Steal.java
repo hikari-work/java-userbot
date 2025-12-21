@@ -195,6 +195,7 @@ public class Steal {
                     log.info("  Local path: {}", localPath);
                     log.info("  File size: {} bytes", file.size);
                     log.info("  Downloaded: {} bytes", file.local.downloadedSize);
+                    log.info("  File exists: {}", new File(localPath).exists());
 
                     updateStatusInOriginalChat(message.chatId, commandMessageId, "⬆️ Uploading to Saved Messages...");
 
@@ -202,7 +203,7 @@ public class Steal {
                         log.info("✓ Got Saved Messages chat ID: {}", savedChatId);
 
                         TdApi.InputFile inputFile = new TdApi.InputFileLocal(localPath);
-                        log.info("✓ Created InputFileLocal");
+                        log.info("✓ Created InputFileLocal with path: {}", localPath);
 
                         TdApi.InputMessageContent content = createInputContent(message.content, inputFile);
 
@@ -215,13 +216,30 @@ public class Steal {
                         }
 
                         log.info("✓ Created InputMessageContent: {}", content.getClass().getSimpleName());
-                        log.info("→ Sending media to Saved Messages chat {}...", savedChatId);
 
-                        client.send(new TdApi.SendMessage(savedChatId, 0, null, null, null, content),
+                        // Create SendMessage request
+                        TdApi.SendMessage sendRequest = new TdApi.SendMessage(
+                                savedChatId,
+                                0,  // messageThreadId
+                                null,  // replyTo
+                                null,  // options
+                                null,  // replyMarkup
+                                content
+                        );
+
+                        log.info("→ Sending media to chat {}...", savedChatId);
+                        log.info("  SendMessage details:");
+                        log.info("    chatId: {}", sendRequest.chatId);
+                        log.info("    content type: {}", sendRequest.inputMessageContent.getClass().getSimpleName());
+
+                        client.send(sendRequest,
                                 this.handleResult(
                                         uploadResult -> {
+                                            TdApi.Message sentMessage = uploadResult.get();
                                             log.info("✓✓✓ SUCCESS! Media uploaded to Saved Messages!");
-                                            log.info("  Uploaded message ID: {}", uploadResult.get().id);
+                                            log.info("  Uploaded message ID: {}", sentMessage.id);
+                                            log.info("  Message chat ID: {}", sentMessage.chatId);
+                                            log.info("  Sent message content type: {}", sentMessage.content.getClass().getSimpleName());
                                             updateStatusInOriginalChat(message.chatId, commandMessageId, "✅ Saved to Saved Messages");
                                             deleteMessageDelayed(message.chatId, commandMessageId, 2000);
                                             cleanupFile(localPath);
@@ -229,6 +247,7 @@ public class Steal {
                                         error -> {
                                             log.error("✗✗✗ FAILED to upload to Saved Messages!");
                                             log.error("Error code: {}, Error message: {}", error.code, error.message);
+                                            log.error("Full error: {}", error);
                                             updateStatusInOriginalChat(message.chatId, commandMessageId, "❌ Failed to upload: " + error.message);
                                             cleanupFile(localPath);
                                         }
@@ -250,23 +269,34 @@ public class Steal {
         log.info("=== GET SAVED MESSAGES CHAT ID START ===");
         CompletableFuture<Long> future = new CompletableFuture<>();
 
-        long myUserId = client.getMe().id;
-        log.info("Current user ID: {}", myUserId);
-        log.info("→ Creating private chat with self...");
+        // Use GetMe to get the current user, then load the chat
+        client.send(new TdApi.GetMe(), this.handleResult(
+                meResult -> {
+                    long myUserId = meResult.get().id;
+                    log.info("Current user ID from GetMe: {}", myUserId);
 
-        client.send(new TdApi.CreatePrivateChat(myUserId, false),
-                this.handleResult(
-                        result -> {
-                            long chatId = result.get().id;
-                            log.info("✓✓✓ Saved Messages chat ID obtained: {}", chatId);
-                            future.complete(chatId);
-                        },
-                        error -> {
-                            log.error("✗✗✗ Failed to get Saved Messages chat!");
-                            log.error("Error code: {}, Error message: {}", error.code, error.message);
-                            future.completeExceptionally(new RuntimeException("Failed to get Saved Messages chat: " + error.message));
-                        }
-                ));
+                    // Load the chat first before trying to send
+                    client.send(new TdApi.CreatePrivateChat(myUserId, true), // force = true to ensure it's loaded
+                            this.handleResult(
+                                    chatResult -> {
+                                        long chatId = chatResult.get().id;
+                                        log.info("✓✓✓ Saved Messages chat ID obtained: {}", chatId);
+                                        log.info("Chat type: {}", chatResult.get().type.getClass().getSimpleName());
+                                        future.complete(chatId);
+                                    },
+                                    error -> {
+                                        log.error("✗✗✗ Failed to create/get private chat!");
+                                        log.error("Error code: {}, Error message: {}", error.code, error.message);
+                                        future.completeExceptionally(new RuntimeException("Failed to get Saved Messages chat: " + error.message));
+                                    }
+                            ));
+                },
+                error -> {
+                    log.error("✗✗✗ Failed to get current user!");
+                    log.error("Error code: {}, Error message: {}", error.code, error.message);
+                    future.completeExceptionally(new RuntimeException("Failed to get current user: " + error.message));
+                }
+        ));
 
         return future;
     }
@@ -372,7 +402,7 @@ public class Steal {
     private TdApi.InputMessageContent createInputContent(TdApi.MessageContent msgContent, TdApi.InputFile inputFile) {
         TdApi.FormattedText caption = extractCaption(msgContent);
 
-        return switch (msgContent) {
+        TdApi.InputMessageContent result = switch (msgContent) {
             case TdApi.MessagePhoto p ->
                     new TdApi.InputMessagePhoto(inputFile, null, null, 0, 0, caption, false, null, false);
 
@@ -400,6 +430,15 @@ public class Steal {
 
             default -> null;
         };
+
+        if (result != null) {
+            log.info("Created input content: {}", result.getClass().getSimpleName());
+            if (inputFile instanceof TdApi.InputFileLocal local) {
+                log.info("  Input file path: {}", local.path);
+            }
+        }
+
+        return result;
     }
 
     private TdApi.FormattedText extractCaption(TdApi.MessageContent content) {
