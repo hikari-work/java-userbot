@@ -391,12 +391,23 @@ public class Steal {
     }
 
     private void downloadAndReupload(long chatId, long messageId, TdApi.Message messageSource, int fileId) {
+        log.info("=== DOWNLOAD AND REUPLOAD (LINK MODE) START ===");
+        log.info("Target chat ID: {}, File ID: {}", chatId, fileId);
+
         client.send(new TdApi.DownloadFile(fileId, HIGHEST_PRIORITY, 0, 0, true),
                 this.handleResult(result -> {
                     String localPath = result.get().local.path;
+                    log.info("✓ File downloaded to: {}", localPath);
+                    log.info("  File size: {} bytes", result.get().size);
+                    log.info("  File exists: {}", new File(localPath).exists());
+
                     updateStatus(chatId, messageId, "⬆️ Uploading...");
+                    log.info("→ Calling reuploadMedia...");
                     reuploadMedia(chatId, messageId, messageSource, localPath);
-                }, error -> updateStatus(chatId, messageId, "❌ Download failed: " + error.message)));
+                }, error -> {
+                    log.error("✗ Download failed: {}", error.message);
+                    updateStatus(chatId, messageId, "❌ Download failed: " + error.message);
+                }));
     }
 
     private int extractFileId(TdApi.MessageContent content) {
@@ -413,22 +424,40 @@ public class Steal {
     }
 
     private void reuploadMedia(long chatId, long messageId, TdApi.Message originalMessage, String localPath) {
+        log.info("=== REUPLOAD MEDIA (LINK MODE) START ===");
+        log.info("Chat ID: {}, Message ID: {}, Local path: {}", chatId, messageId, localPath);
+
         TdApi.InputFile inputFile = new TdApi.InputFileLocal(localPath);
+        log.info("✓ Created InputFileLocal");
+
+        log.info("→ Calling createInputContent...");
         TdApi.InputMessageContent content = createInputContent(originalMessage.content, inputFile);
+        log.info("← Returned from createInputContent");
 
         if (content == null) {
+            log.error("✗ Content is NULL!");
             updateStatus(chatId, messageId, "❌ Failed to create input content (Type Unknown).");
             return;
         }
 
+        log.info("✓ Content created: {}", content.getClass().getSimpleName());
+        log.info("→ Sending message to chat {}...", chatId);
+
         client.send(new TdApi.SendMessage(chatId, 0, null, null, null, content),
                 this.handleResult(
                         result -> {
+                            log.info("✓✓✓ Upload SUCCESS!");
+                            log.info("  Message ID: {}", result.get().id);
                             deleteMessage(chatId, messageId);
                             cleanupFile(localPath);
                         },
-                        error -> updateStatus(chatId, messageId, "❌ Failed to upload: " + error.message)
+                        error -> {
+                            log.error("✗✗✗ Upload FAILED!");
+                            log.error("  Error: {}", error.message);
+                            updateStatus(chatId, messageId, "❌ Failed to upload: " + error.message);
+                        }
                 ));
+        log.info("✓ Send request registered");
     }
 
     private TdApi.InputMessageContent createInputContent(TdApi.MessageContent msgContent, TdApi.InputFile inputFile) {
