@@ -492,40 +492,48 @@ public class Steal {
     private String modifyFileForReupload(String originalPath) {
         try {
             File original = new File(originalPath);
-            String fileName = original.getName();
-            String extension = "";
-
-            int i = fileName.lastIndexOf('.');
-            if (i > 0) {
-                extension = fileName.substring(i);
+            if (!original.exists()) {
+                log.error("Original file does not exist: {}", originalPath);
+                return originalPath;
             }
 
-            String baseName = (i > 0) ? fileName.substring(0, i) : fileName;
+            String fileName = original.getName();
+            String extension = fileName.contains(".") ? fileName.substring(fileName.lastIndexOf('.')) : "";
+            String baseName = fileName.contains(".") ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
 
-            File modified = new File(original.getParent() + "/temp/" + UUID.randomUUID() + "/", baseName + "_reup" + extension);
+            File modified = new File(original.getParent() + "/temp/" + UUID.randomUUID() + "/", baseName + "_bypass" + extension);
 
-            File parentDir = modified.getParentFile();
-            if (!parentDir.exists()) {
-                boolean dirsCreated = parentDir.mkdirs();
-                if (!dirsCreated) {
-                    log.error("Failed to create directories: {}", parentDir.getAbsolutePath());
+            if (!modified.getParentFile().exists()) {
+                if (!modified.getParentFile().mkdirs()) {
+                    log.error("Failed to create directory: {}", modified.getParentFile());
                     return originalPath;
                 }
             }
 
             log.info("  Copying {} to {}", originalPath, modified.getAbsolutePath());
+            log.info("  Original Size: {}", original.length());
 
-            Files.copy(original.toPath(), modified.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            byte[] fileBytes = Files.readAllBytes(original.toPath());
 
-            try (FileOutputStream fos = new FileOutputStream(modified, true)) {
-                fos.write((int) (Math.random() * 255));
+            try (FileOutputStream fos = new FileOutputStream(modified)) {
+                fos.write(fileBytes);
+
+                String randomJunk = "UUID:" + UUID.randomUUID().toString() + "-TDLIB-BYPASS";
+                fos.write(randomJunk.getBytes());
+
+                fos.flush();
             }
 
-            log.info("  File copied and hash modified successfully");
+            log.info("  New Size: {}", modified.length());
+
+            if (modified.length() <= original.length()) {
+                log.warn("WARNING: File size did not increase! Modification might have failed.");
+            }
+
             return modified.getAbsolutePath();
 
         } catch (Exception e) {
-            log.error("Failed to modify file, using original", e);
+            log.error("FATAL: Failed to modify file", e);
             return originalPath;
         }
     }
