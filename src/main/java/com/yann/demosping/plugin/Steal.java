@@ -494,60 +494,46 @@ public class Steal {
         if (!original.exists()) return originalPath;
 
         try {
-            // 1. Setup paths
+            // 1. USE SYSTEM TEMP DIR (Crucial Fix)
+            // We move the file out of the "downloads" folder so TDLib doesn't auto-scan it.
+            String tempDir = System.getProperty("java.io.tmpdir");
+
             String fileName = original.getName();
             String extension = fileName.contains(".") ? fileName.substring(fileName.lastIndexOf('.')) : "";
             String baseName = fileName.contains(".") ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
 
-            // Use random UUID folder to ensure unique path
-            File modified = new File(original.getParent() + "/temp/" + UUID.randomUUID() + "/", baseName + "_bypass" + extension);
+            // Create a truly external path: /tmp/UUID/file_bypass.mp4
+            File modified = new File(tempDir + File.separator + UUID.randomUUID().toString() + File.separator + baseName + "_bypass" + extension);
 
-            // 2. Create directory (Critical)
+            // 2. Create directory
             if (!modified.getParentFile().exists()) {
-                if (!modified.getParentFile().mkdirs()) {
-                    log.error("Failed to create directory: {}", modified.getParentFile());
-                    return originalPath;
-                }
+                modified.getParentFile().mkdirs();
             }
 
-            log.info("  Re-hashing file...");
-            log.info("  Source: {} ({} bytes)", originalPath, original.length());
+            log.info("  Processing File...");
+            log.info("  From: " + originalPath);
+            log.info("  To:   " + modified.getAbsolutePath());
 
-            // 3. Manual Stream Copy (The Nuclear Option)
-            // We do not use Files.copy(). We read and write manually.
             try (java.io.FileInputStream fis = new java.io.FileInputStream(original);
                  java.io.FileOutputStream fos = new java.io.FileOutputStream(modified)) {
 
-                byte[] buffer = new byte[4096]; // 4KB buffer
+                byte[] buffer = new byte[8192];
                 int bytesRead;
 
-                // Copy the actual file content
                 while ((bytesRead = fis.read(buffer)) != -1) {
                     fos.write(buffer, 0, bytesRead);
                 }
+                byte[] garbage = new byte[4096];
+                new java.util.Random().nextBytes(garbage);
+                fos.write(garbage);
 
-                // 4. INJECT RANDOM JUNK (The Fix)
-                // Append a unique UUID string to the end of the file.
-                // This forces the SHA256 hash to be completely new.
-                String junkData = "---TDLIB-BYPASS-HASH-" + UUID.randomUUID().toString() + "---";
-                fos.write(junkData.getBytes());
-
-                fos.flush(); // Force write to disk
-            }
-
-            log.info("  Target: {} ({} bytes)", modified.getAbsolutePath(), modified.length());
-
-            // 5. SANITY CHECK
-            // If the new file is not larger, the fix FAILED.
-            if (modified.length() <= original.length()) {
-                log.error("FATAL: File modification failed! Sizes are identical.");
-                return originalPath; // Fallback, though it will likely fail upload
+                fos.getFD().sync();
             }
 
             return modified.getAbsolutePath();
 
         } catch (Exception e) {
-            log.error("Failed to modify file for reupload", e);
+            log.error("Failed to modify file", e);
             return originalPath;
         }
     }
