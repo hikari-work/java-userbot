@@ -94,7 +94,6 @@ public class Steal {
     }
 
     private void forwardToSavedMessages(long commandMessageId, TdApi.Message message) {
-        log.info("=== FORWARD TO SAVED MESSAGES START ===");
         getSavedMessagesChatId().thenAccept(savedChatId -> {
             try {
                 TdApi.InputMessageContent inputContent = copyMessageUtils.convertToInput(message.content);
@@ -116,7 +115,6 @@ public class Steal {
     }
 
     private void handleProtectedContentToSavedMessages(long commandMessageId, TdApi.Message message) {
-        log.info("=== HANDLE PROTECTED CONTENT TO SAVED MESSAGES START ===");
         if (message.content instanceof TdApi.MessageText text) {
             sendTextToSavedMessages(commandMessageId, message.chatId, text);
             return;
@@ -148,7 +146,6 @@ public class Steal {
 
     // --- UPDATED METHOD: Uses DeleteFile logic ---
     private void downloadAndUploadToSavedMessages(long commandMessageId, TdApi.Message message, int fileId) {
-        log.info("=== DOWNLOAD AND UPLOAD TO SAVED MESSAGES START ===");
 
         client.send(new TdApi.DownloadFile(fileId, HIGHEST_PRIORITY, 0, 0, true),
                 this.handleResult(downloadResult -> {
@@ -159,20 +156,11 @@ public class Steal {
                     updateStatusInOriginalChat(message.chatId, commandMessageId, "⬆️ Uploading to Saved Messages...");
 
                     getSavedMessagesChatId().thenAccept(savedChatId -> {
-                        // 1. Move to safe location (/tmp)
                         String safePath = copyToTemp(localPath);
-                        log.info("✓ File moved to safe path: {}", safePath);
 
-                        // 2. FORGET ORIGINAL OWNERSHIP
                         client.send(new TdApi.DeleteFile(fileId), this.handleResult(
-                                deleteOk -> {
-                                    log.info("✓ Original file record deleted. Proceeding to upload.");
-                                    uploadSafeFile(savedChatId, message, commandMessageId, safePath, localPath);
-                                },
-                                deleteError -> {
-                                    log.warn("! DeleteFile failed (might be already deleted), trying upload anyway: {}", deleteError.message);
-                                    uploadSafeFile(savedChatId, message, commandMessageId, safePath, localPath);
-                                }
+                                deleteOk -> uploadSafeFile(savedChatId, message, commandMessageId, safePath, localPath),
+                                deleteError -> uploadSafeFile(savedChatId, message, commandMessageId, safePath, localPath)
                         ));
                     }).exceptionally(e -> {
                         cleanupFile(localPath);
@@ -181,7 +169,6 @@ public class Steal {
                 }, error -> updateStatusInOriginalChat(message.chatId, commandMessageId, "❌ Download failed: " + error.message)));
     }
 
-    // --- NEW HELPER: Performs the actual upload after file is safe and record is deleted ---
     private void uploadSafeFile(long targetChatId, TdApi.Message originalMessage, long commandMessageId, String safePath, String originalPath) {
         TdApi.InputFile inputFile = new TdApi.InputFileLocal(safePath);
         TdApi.InputMessageContent content = createInputContent(originalMessage.content, inputFile);
@@ -196,14 +183,12 @@ public class Steal {
         client.send(new TdApi.SendMessage(targetChatId, 0, null, null, null, content),
                 this.handleResult(
                         uploadResult -> {
-                            log.info("✓✓✓ Upload SUCCESS!");
                             updateStatusInOriginalChat(originalMessage.chatId, commandMessageId, "✅ Saved successfully");
                             deleteMessageDelayed(originalMessage.chatId, commandMessageId);
                             cleanupFile(safePath);
                             cleanupFile(originalPath);
                         },
                         error -> {
-                            log.error("✗ Upload FAILED: {}", error.message);
                             updateStatusInOriginalChat(originalMessage.chatId, commandMessageId, "❌ Upload failed: " + error.message);
                             cleanupFile(safePath);
                             cleanupFile(originalPath);
@@ -214,13 +199,11 @@ public class Steal {
     private CompletableFuture<Long> getSavedMessagesChatId() {
         CompletableFuture<Long> future = new CompletableFuture<>();
         client.send(new TdApi.GetMe(), this.handleResult(
-                meResult -> {
-                    client.send(new TdApi.CreatePrivateChat(meResult.get().id, true),
-                            this.handleResult(
-                                    chatResult -> future.complete(chatResult.get().id),
-                                    error -> future.completeExceptionally(new RuntimeException(error.message))
-                            ));
-                },
+                meResult -> client.send(new TdApi.CreatePrivateChat(meResult.get().id, true),
+                        this.handleResult(
+                                chatResult -> future.complete(chatResult.get().id),
+                                error -> future.completeExceptionally(new RuntimeException(error.message))
+                        )),
                 error -> future.completeExceptionally(new RuntimeException(error.message))
         ));
         return future;
@@ -277,22 +260,15 @@ public class Steal {
         deleteMessage(chatId, messageId);
     }
 
-    // --- UPDATED METHOD: Uses DeleteFile logic ---
     private void downloadAndReupload(long chatId, long messageId, TdApi.Message messageSource, int fileId) {
-        log.info("=== DOWNLOAD AND REUPLOAD (LINK MODE) START ===");
-
         client.send(new TdApi.DownloadFile(fileId, HIGHEST_PRIORITY, 0, 0, true),
                 this.handleResult(result -> {
                     String localPath = result.get().local.path;
-                    log.info("✓ File downloaded to: {}", localPath);
+
 
                     updateStatus(chatId, messageId, "⬆️ Uploading...");
-                    // PASS fileId to reuploadMedia
                     reuploadMedia(chatId, messageId, messageSource, localPath, fileId);
-                }, error -> {
-                    log.error("✗ Download failed: {}", error.message);
-                    updateStatus(chatId, messageId, "❌ Download failed: " + error.message);
-                }));
+                }, error -> updateStatus(chatId, messageId, "❌ Download failed: " + error.message)));
     }
 
     private int extractFileId(TdApi.MessageContent content) {
@@ -308,24 +284,12 @@ public class Steal {
         };
     }
 
-    // --- UPDATED METHOD: Uses DeleteFile logic ---
     private void reuploadMedia(long chatId, long messageId, TdApi.Message originalMessage, String localPath, int originalFileId) {
-        log.info("=== REUPLOAD MEDIA (LINK MODE) START ===");
 
-        // 1. Move to /tmp to avoid directory monitoring
         String safePath = copyToTemp(localPath);
-        log.info("✓ File moved to safe path: {}", safePath);
-
-        // 2. FORGET ORIGINAL OWNERSHIP
         client.send(new TdApi.DeleteFile(originalFileId), this.handleResult(
-                deleteOk -> {
-                    log.info("✓ Original file record deleted. Proceeding to upload.");
-                    sendFinalFile(chatId, messageId, originalMessage, safePath, localPath);
-                },
-                deleteError -> {
-                    log.warn("! DeleteFile failed (might be already deleted), trying upload anyway: {}", deleteError.message);
-                    sendFinalFile(chatId, messageId, originalMessage, safePath, localPath);
-                }
+                deleteOk -> sendFinalFile(chatId, messageId, originalMessage, safePath, localPath),
+                deleteError -> sendFinalFile(chatId, messageId, originalMessage, safePath, localPath)
         ));
     }
 
@@ -343,13 +307,11 @@ public class Steal {
         client.send(new TdApi.SendMessage(chatId, 0, null, null, null, content),
                 this.handleResult(
                         result -> {
-                            log.info("✓✓✓ Upload SUCCESS!");
                             deleteMessage(chatId, messageId);
                             cleanupFile(safePath);
                             cleanupFile(originalPath);
                         },
                         error -> {
-                            log.error("✗ Upload FAILED: {}", error.message);
                             updateStatus(chatId, messageId, "❌ Failed to upload: " + error.message);
                             cleanupFile(safePath);
                             cleanupFile(originalPath);
@@ -357,38 +319,33 @@ public class Steal {
                 ));
     }
 
-    /**
-     * REPLACES modifyFileForReupload.
-     * Simply copies the file to the system temp directory.
-     * We don't need garbage data anymore because we use DeleteFile to reset ownership.
-     */
+
     private String copyToTemp(String originalPath) {
         try {
             File original = new File(originalPath);
             String tempDir = System.getProperty("java.io.tmpdir");
-            String newName = UUID.randomUUID().toString() + "_" + original.getName();
+            String newName = UUID.randomUUID() + "_" + original.getName();
             File dest = new File(tempDir, newName);
 
             Files.copy(original.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
             return dest.getAbsolutePath();
         } catch (Exception e) {
-            log.error("Failed to copy to temp", e);
-            return originalPath; // Fallback
+            return originalPath;
         }
     }
 
     private TdApi.InputMessageContent createInputContent(TdApi.MessageContent msgContent, TdApi.InputFile inputFile) {
         TdApi.FormattedText caption = extractCaption(msgContent);
 
-        TdApi.InputMessageContent result = switch (msgContent) {
-            case TdApi.MessagePhoto p ->
+        return switch (msgContent) {
+            case TdApi.MessagePhoto ignored ->
                     new TdApi.InputMessagePhoto(inputFile, null, null, 0, 0, caption, false, null, false);
 
             case TdApi.MessageVideo v ->
                     new TdApi.InputMessageVideo(inputFile, null, null, 0, null, v.video.duration,
                             v.video.width, v.video.height, v.video.supportsStreaming, caption, false, null, false);
 
-            case TdApi.MessageDocument d ->
+            case TdApi.MessageDocument ignored ->
                     new TdApi.InputMessageDocument(inputFile, null, false, caption);
 
             case TdApi.MessageAudio a ->
@@ -403,12 +360,11 @@ public class Steal {
                     new TdApi.InputMessageAnimation(inputFile, null, null, anim.animation.duration,
                             anim.animation.width, anim.animation.height, caption, false, false);
 
-            case TdApi.MessageSticker s ->
+            case TdApi.MessageSticker ignored ->
                     new TdApi.InputMessageSticker(inputFile, null, 0, 0, null);
 
             default -> null;
         };
-        return result;
     }
 
     private TdApi.FormattedText extractCaption(TdApi.MessageContent content) {
