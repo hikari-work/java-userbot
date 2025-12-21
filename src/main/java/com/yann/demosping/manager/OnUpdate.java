@@ -4,6 +4,7 @@ import com.yann.demosping.plugin.Update;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
@@ -11,6 +12,7 @@ import org.springframework.stereotype.Component;
 import java.io.File;
 import java.nio.file.Files;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class OnUpdate {
@@ -39,9 +41,8 @@ public class OnUpdate {
 
             String rawLog = new String(Files.readAllBytes(logFile.toPath()));
 
-            System.out.println("=== DEBUG LOG CONTENT ===");
-            System.out.println(rawLog);
-            System.out.println("=========================");
+            log.info("Applying Patches");
+            log.info(rawLog);
             String safeLog = rawLog
                     .replace("&", "&amp;")
                     .replace("<", "&lt;")
