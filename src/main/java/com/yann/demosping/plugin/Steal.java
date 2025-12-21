@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 @Slf4j
@@ -494,7 +495,7 @@ public class Steal {
             String extension = fileName.substring(fileName.lastIndexOf('.'));
             String baseName = fileName.substring(0, fileName.lastIndexOf('.'));
 
-            File modified = new File(original.getParent(), baseName + "_reup" + extension);
+            File modified = new File(original.getParent() + "/temp/" + UUID.randomUUID() + "/", baseName + "_reup" + extension);
 
             log.info("  Copying {} to {}", originalPath, modified.getAbsolutePath());
 
