@@ -1,4 +1,4 @@
-package com.yann.demosping.utils; // Sesuaikan package Anda
+package com.yann.demosping.utils;
 
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;

@@ -16,7 +16,6 @@ import java.io.File;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Consumer;
 
 @Slf4j
 @Component
@@ -94,95 +93,181 @@ public class Steal {
     }
 
     private void forwardToSavedMessages(long commandMessageId, TdApi.Message message) {
+        log.info("=== FORWARD TO SAVED MESSAGES START ===");
+        log.info("Message ID: {}, Chat ID: {}, Content Type: {}", message.id, message.chatId, message.content.getClass().getSimpleName());
+
         getSavedMessagesChatId().thenAccept(savedChatId -> {
-            TdApi.InputMessageContent inputContent = copyMessageUtils.convertToInput(message.content);
-            client.send(new TdApi.SendMessage(savedChatId, 0, null, null, null, inputContent),
-                    this.handleResult(
-                            result -> {
-                                updateStatusInOriginalChat(message.chatId, commandMessageId, "✅ Saved to Saved Messages");
-                                deleteMessageDelayed(message.chatId, commandMessageId);
-                            },
-                            error -> updateStatusInOriginalChat(message.chatId, commandMessageId, "❌ Failed to save: " + error.message)
-                    ));
+            log.info("✓ Got Saved Messages chat ID: {}", savedChatId);
+
+            try {
+                TdApi.InputMessageContent inputContent = copyMessageUtils.convertToInput(message.content);
+                log.info("✓ Converted message content to InputMessageContent: {}", inputContent.getClass().getSimpleName());
+
+                log.info("→ Sending message to Saved Messages chat {}...", savedChatId);
+                client.send(new TdApi.SendMessage(savedChatId, 0, null, null, null, inputContent),
+                        this.handleResult(
+                                result -> {
+                                    log.info("✓✓✓ SUCCESS! Message sent to Saved Messages. Message ID: {}", result.get().id);
+                                    updateStatusInOriginalChat(message.chatId, commandMessageId, "✅ Saved to Saved Messages");
+                                    deleteMessageDelayed(message.chatId, commandMessageId, 2000);
+                                },
+                                error -> {
+                                    log.error("✗✗✗ FAILED to send to Saved Messages!");
+                                    log.error("Error code: {}, Error message: {}", error.code, error.message);
+                                    updateStatusInOriginalChat(message.chatId, commandMessageId, "❌ Failed to save: " + error.message);
+                                }
+                        ));
+            } catch (Exception e) {
+                log.error("✗✗✗ EXCEPTION while converting/sending message", e);
+                updateStatusInOriginalChat(message.chatId, commandMessageId, "❌ Exception: " + e.getMessage());
+            }
         }).exceptionally(e -> {
-            updateStatusInOriginalChat(message.chatId, commandMessageId, "❌ Failed to get Saved Messages");
+            log.error("✗✗✗ EXCEPTION in getSavedMessagesChatId", e);
+            updateStatusInOriginalChat(message.chatId, commandMessageId, "❌ Failed to get Saved Messages: " + e.getMessage());
             return null;
         });
     }
 
     private void handleProtectedContentToSavedMessages(long commandMessageId, TdApi.Message message) {
+        log.info("=== HANDLE PROTECTED CONTENT TO SAVED MESSAGES START ===");
+        log.info("Message content type: {}", message.content.getClass().getSimpleName());
+
         if (message.content instanceof TdApi.MessageText text) {
+            log.info("Content is TEXT, forwarding directly");
             sendTextToSavedMessages(commandMessageId, message.chatId, text);
             return;
         }
 
         int fileId = extractFileId(message.content);
+        log.info("Extracted file ID: {}", fileId);
+
         if (fileId == 0) {
+            log.error("File ID is 0 - media type not supported");
             updateStatusInOriginalChat(message.chatId, commandMessageId, "❌ Media type not supported for stealing.");
             return;
         }
 
+        log.info("Starting download for file ID: {}", fileId);
         updateStatusInOriginalChat(message.chatId, commandMessageId, "🔓 Protected content detected.\n⬇️ Downloading...");
         downloadAndUploadToSavedMessages(commandMessageId, message, fileId);
     }
 
     private void sendTextToSavedMessages(long commandMessageId, long originalChatId, TdApi.MessageText text) {
+        log.info("=== SEND TEXT TO SAVED MESSAGES START ===");
+        log.info("Text length: {} characters", text.text.text.length());
+
         getSavedMessagesChatId().thenAccept(savedChatId -> {
+            log.info("✓ Got Saved Messages chat ID: {}", savedChatId);
+
             TdApi.InputMessageText inputText = new TdApi.InputMessageText(text.text, null, true);
+            log.info("✓ Created InputMessageText");
+
+            log.info("→ Sending text message to Saved Messages...");
             client.send(new TdApi.SendMessage(savedChatId, 0, null, null, null, inputText),
                     this.handleResult(
                             result -> {
+                                log.info("✓✓✓ SUCCESS! Text sent to Saved Messages. Message ID: {}", result.get().id);
                                 updateStatusInOriginalChat(originalChatId, commandMessageId, "✅ Saved to Saved Messages");
-                                deleteMessageDelayed(originalChatId, commandMessageId);
+                                deleteMessageDelayed(originalChatId, commandMessageId, 2000);
                             },
-                            error -> updateStatusInOriginalChat(originalChatId, commandMessageId, "❌ Failed to save: " + error.message)
+                            error -> {
+                                log.error("✗✗✗ FAILED to send text to Saved Messages!");
+                                log.error("Error code: {}, Error message: {}", error.code, error.message);
+                                updateStatusInOriginalChat(originalChatId, commandMessageId, "❌ Failed to save: " + error.message);
+                            }
                     ));
+        }).exceptionally(e -> {
+            log.error("✗✗✗ EXCEPTION in getSavedMessagesChatId for text", e);
+            updateStatusInOriginalChat(originalChatId, commandMessageId, "❌ Failed to get Saved Messages: " + e.getMessage());
+            return null;
         });
     }
 
     private void downloadAndUploadToSavedMessages(long commandMessageId, TdApi.Message message, int fileId) {
+        log.info("=== DOWNLOAD AND UPLOAD TO SAVED MESSAGES START ===");
+        log.info("File ID: {}, Message content type: {}", fileId, message.content.getClass().getSimpleName());
+
         client.send(new TdApi.DownloadFile(fileId, HIGHEST_PRIORITY, 0, 0, true),
                 this.handleResult(downloadResult -> {
-                    String localPath = downloadResult.get().local.path;
+                    TdApi.File file = downloadResult.get();
+                    String localPath = file.local.path;
+                    log.info("✓ File downloaded successfully!");
+                    log.info("  Local path: {}", localPath);
+                    log.info("  File size: {} bytes", file.size);
+                    log.info("  Downloaded: {} bytes", file.local.downloadedSize);
+
                     updateStatusInOriginalChat(message.chatId, commandMessageId, "⬆️ Uploading to Saved Messages...");
 
                     getSavedMessagesChatId().thenAccept(savedChatId -> {
+                        log.info("✓ Got Saved Messages chat ID: {}", savedChatId);
+
                         TdApi.InputFile inputFile = new TdApi.InputFileLocal(localPath);
+                        log.info("✓ Created InputFileLocal");
+
                         TdApi.InputMessageContent content = createInputContent(message.content, inputFile);
 
                         if (content == null) {
+                            log.error("✗✗✗ createInputContent returned NULL!");
+                            log.error("Message content type was: {}", message.content.getClass().getSimpleName());
                             updateStatusInOriginalChat(message.chatId, commandMessageId, "❌ Failed to create input content (Type Unknown).");
                             cleanupFile(localPath);
                             return;
                         }
 
+                        log.info("✓ Created InputMessageContent: {}", content.getClass().getSimpleName());
+                        log.info("→ Sending media to Saved Messages chat {}...", savedChatId);
+
                         client.send(new TdApi.SendMessage(savedChatId, 0, null, null, null, content),
                                 this.handleResult(
                                         uploadResult -> {
+                                            log.info("✓✓✓ SUCCESS! Media uploaded to Saved Messages!");
+                                            log.info("  Uploaded message ID: {}", uploadResult.get().id);
                                             updateStatusInOriginalChat(message.chatId, commandMessageId, "✅ Saved to Saved Messages");
-                                            deleteMessageDelayed(message.chatId, commandMessageId);
+                                            deleteMessageDelayed(message.chatId, commandMessageId, 2000);
                                             cleanupFile(localPath);
                                         },
                                         error -> {
+                                            log.error("✗✗✗ FAILED to upload to Saved Messages!");
+                                            log.error("Error code: {}, Error message: {}", error.code, error.message);
                                             updateStatusInOriginalChat(message.chatId, commandMessageId, "❌ Failed to upload: " + error.message);
                                             cleanupFile(localPath);
                                         }
                                 ));
                     }).exceptionally(e -> {
-                        updateStatusInOriginalChat(message.chatId, commandMessageId, "❌ Failed to get Saved Messages");
+                        log.error("✗✗✗ EXCEPTION in getSavedMessagesChatId during upload", e);
+                        updateStatusInOriginalChat(message.chatId, commandMessageId, "❌ Failed to get Saved Messages: " + e.getMessage());
                         cleanupFile(localPath);
                         return null;
                     });
-                }, error -> updateStatusInOriginalChat(message.chatId, commandMessageId, "❌ Download failed: " + error.message)));
+                }, error -> {
+                    log.error("✗✗✗ FAILED to download file!");
+                    log.error("Error code: {}, Error message: {}", error.code, error.message);
+                    updateStatusInOriginalChat(message.chatId, commandMessageId, "❌ Download failed: " + error.message);
+                }));
     }
 
     private CompletableFuture<Long> getSavedMessagesChatId() {
+        log.info("=== GET SAVED MESSAGES CHAT ID START ===");
         CompletableFuture<Long> future = new CompletableFuture<>();
-        client.send(new TdApi.CreatePrivateChat(client.getMe().id, false),
+
+        long myUserId = client.getMe().id;
+        log.info("Current user ID: {}", myUserId);
+        log.info("→ Creating private chat with self...");
+
+        client.send(new TdApi.CreatePrivateChat(myUserId, false),
                 this.handleResult(
-                        result -> future.complete(result.get().id),
-                        error -> future.completeExceptionally(new RuntimeException("Failed to get Saved Messages chat"))
+                        result -> {
+                            long chatId = result.get().id;
+                            log.info("✓✓✓ Saved Messages chat ID obtained: {}", chatId);
+                            future.complete(chatId);
+                        },
+                        error -> {
+                            log.error("✗✗✗ Failed to get Saved Messages chat!");
+                            log.error("Error code: {}, Error message: {}", error.code, error.message);
+                            future.completeExceptionally(new RuntimeException("Failed to get Saved Messages chat: " + error.message));
+                        }
                 ));
+
         return future;
     }
 
@@ -190,10 +275,10 @@ public class Steal {
         updateStatus(chatId, messageId, text);
     }
 
-    private void deleteMessageDelayed(long chatId, long messageId) {
+    private void deleteMessageDelayed(long chatId, long messageId, long delayMs) {
         new Thread(() -> {
             try {
-                Thread.sleep((long) 2000);
+                Thread.sleep(delayMs);
                 deleteMessage(chatId, messageId);
             } catch (InterruptedException e) {
                 log.warn("Delete message delay interrupted", e);
@@ -368,8 +453,8 @@ public class Steal {
      * Helper method to create GenericResultHandler with success and error callbacks
      */
     private <T extends TdApi.Object> GenericResultHandler<T> handleResult(
-            Consumer<Result<T>> onSuccess,
-            Consumer<TdApi.Error> onError) {
+            java.util.function.Consumer<Result<T>> onSuccess,
+            java.util.function.Consumer<TdApi.Error> onError) {
         return result -> {
             if (result.isError()) {
                 onError.accept(result.getError());
