@@ -490,19 +490,19 @@ public class Steal {
      * Modifies file by creating a copy with stripped metadata to force Telegram to treat it as new
      */
     private String modifyFileForReupload(String originalPath) {
-        try {
-            File original = new File(originalPath);
-            if (!original.exists()) {
-                log.error("Original file does not exist: {}", originalPath);
-                return originalPath;
-            }
+        File original = new File(originalPath);
+        if (!original.exists()) return originalPath;
 
+        try {
+            // 1. Setup paths
             String fileName = original.getName();
             String extension = fileName.contains(".") ? fileName.substring(fileName.lastIndexOf('.')) : "";
             String baseName = fileName.contains(".") ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
 
+            // Use random UUID folder to ensure unique path
             File modified = new File(original.getParent() + "/temp/" + UUID.randomUUID() + "/", baseName + "_bypass" + extension);
 
+            // 2. Create directory (Critical)
             if (!modified.getParentFile().exists()) {
                 if (!modified.getParentFile().mkdirs()) {
                     log.error("Failed to create directory: {}", modified.getParentFile());
@@ -510,30 +510,44 @@ public class Steal {
                 }
             }
 
-            log.info("  Copying {} to {}", originalPath, modified.getAbsolutePath());
-            log.info("  Original Size: {}", original.length());
+            log.info("  Re-hashing file...");
+            log.info("  Source: {} ({} bytes)", originalPath, original.length());
 
-            byte[] fileBytes = Files.readAllBytes(original.toPath());
+            // 3. Manual Stream Copy (The Nuclear Option)
+            // We do not use Files.copy(). We read and write manually.
+            try (java.io.FileInputStream fis = new java.io.FileInputStream(original);
+                 java.io.FileOutputStream fos = new java.io.FileOutputStream(modified)) {
 
-            try (FileOutputStream fos = new FileOutputStream(modified)) {
-                fos.write(fileBytes);
+                byte[] buffer = new byte[4096]; // 4KB buffer
+                int bytesRead;
 
-                String randomJunk = "UUID:" + UUID.randomUUID().toString() + "-TDLIB-BYPASS";
-                fos.write(randomJunk.getBytes());
+                // Copy the actual file content
+                while ((bytesRead = fis.read(buffer)) != -1) {
+                    fos.write(buffer, 0, bytesRead);
+                }
 
-                fos.flush();
+                // 4. INJECT RANDOM JUNK (The Fix)
+                // Append a unique UUID string to the end of the file.
+                // This forces the SHA256 hash to be completely new.
+                String junkData = "---TDLIB-BYPASS-HASH-" + UUID.randomUUID().toString() + "---";
+                fos.write(junkData.getBytes());
+
+                fos.flush(); // Force write to disk
             }
 
-            log.info("  New Size: {}", modified.length());
+            log.info("  Target: {} ({} bytes)", modified.getAbsolutePath(), modified.length());
 
+            // 5. SANITY CHECK
+            // If the new file is not larger, the fix FAILED.
             if (modified.length() <= original.length()) {
-                log.warn("WARNING: File size did not increase! Modification might have failed.");
+                log.error("FATAL: File modification failed! Sizes are identical.");
+                return originalPath; // Fallback, though it will likely fail upload
             }
 
             return modified.getAbsolutePath();
 
         } catch (Exception e) {
-            log.error("FATAL: Failed to modify file", e);
+            log.error("Failed to modify file for reupload", e);
             return originalPath;
         }
     }
