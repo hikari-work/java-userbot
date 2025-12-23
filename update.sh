@@ -5,12 +5,19 @@ exec 2>&1
 
 echo "=== START UPDATE SCRIPT ==="
 echo "Date: $(date)"
-JAVA_CMD="/home/root/.sdkman/candidates/java/current/bin/java"
-WORK_DIR="/home/root/java-userbot"
+
+JAVA_CMD="/root/.sdkman/candidates/java/current/bin/java"
+
+WORK_DIR="/root/java-userbot"
+
 JAR_NAME="userbot.jar"
 
-cd $WORK_DIR
-
+if [ -d "$WORK_DIR" ]; then
+    cd $WORK_DIR
+else
+    echo "CRITICAL: Directory $WORK_DIR not found!"
+    exit 1
+fi
 
 OLD_PID=$1
 if [ -n "$OLD_PID" ]; then
@@ -18,13 +25,17 @@ if [ -n "$OLD_PID" ]; then
     kill -9 $OLD_PID 2>/dev/null
 fi
 
-
 sleep 3
 pkill -f $JAR_NAME
+
 if [ -f "target/$JAR_NAME" ]; then
     echo "Starting new bot..."
-    setsid $JAVA_CMD -Xmx128m -jar target/$JAR_NAME > bot_runtime.log 2>&1 &
-    echo "New bot launched."
+    if [ -x "$JAVA_CMD" ]; then
+        setsid $JAVA_CMD -Xmx128m -jar target/$JAR_NAME > bot_runtime.log 2>&1 &
+        echo "New bot launched."
+    else
+        echo "CRITICAL: Java command not found at $JAVA_CMD"
+    fi
 else
     echo "CRITICAL: File target/$JAR_NAME not found inside $WORK_DIR"
 fi
