@@ -5,8 +5,8 @@ exec 2>&1
 
 echo "=== START UPDATE SCRIPT ==="
 echo "Date: $(date)"
-JAVA_CMD="/home/viandra-stefani/.sdkman/candidates/java/current/bin/java"
-WORK_DIR="/home/viandra-stefani/java-userbot"
+JAVA_CMD="/home/root/.sdkman/candidates/java/current/bin/java"
+WORK_DIR="/home/root/java-userbot"
 JAR_NAME="userbot.jar"
 
 cd $WORK_DIR
