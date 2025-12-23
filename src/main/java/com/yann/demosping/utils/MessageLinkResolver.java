@@ -21,11 +21,9 @@ public class MessageLinkResolver {
         CompletableFuture<TdApi.Message> future = new CompletableFuture<>();
         String cleanLink = link.trim();
 
-        log.info("Resolving link via GetMessageLinkInfo: {}", cleanLink);
-
         client.send(new TdApi.GetMessageLinkInfo(cleanLink), result -> {
             if (result.isError()) {
-                log.error("Link Info Error: {}", result.getError().message);
+
                 future.completeExceptionally(new RuntimeException(result.getError().message));
                 return;
             }
@@ -33,7 +31,7 @@ public class MessageLinkResolver {
             TdApi.MessageLinkInfo info = result.get();
 
             if (info.message != null) {
-                log.info("Message Resolved! ChatID: {}, MsgID: {} (Internal)", info.chatId, info.message.id);
+
                 future.complete(info.message);
             } else {
 

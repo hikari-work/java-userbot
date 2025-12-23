@@ -73,19 +73,16 @@ public class Ping {
         OperatingSystemMXBean osBean = (OperatingSystemMXBean) ManagementFactory.getOperatingSystemMXBean();
         MemoryMXBean memoryMXBean = ManagementFactory.getMemoryMXBean();
 
-
         long uptimeSecs = runtime.getUptime() / 1000;
         long days = uptimeSecs / 86400;
         long hours = (uptimeSecs % 86400) / 3600;
         long mins = (uptimeSecs % 3600) / 60;
         long secs = uptimeSecs % 60;
 
-        // Memory Usage
         MemoryUsage heapUsage = memoryMXBean.getHeapMemoryUsage();
         long usedMem = heapUsage.getUsed() / (1024 * 1024);
         long maxMem = heapUsage.getMax() / (1024 * 1024);
 
-        // CPU & Threads
         double cpuLoad = osBean.getSystemLoadAverage() * 100;
         int threadCount = threadBean.getThreadCount();
 

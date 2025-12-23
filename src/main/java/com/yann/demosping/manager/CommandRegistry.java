@@ -35,7 +35,6 @@ public class CommandRegistry implements ApplicationListener<ContextRefreshedEven
                 }
             }
         }
-        log.info("Berhasil Membuat {} command", commandMap.size());
     }
 
     public CommandContainer getCommand(String trigger) {

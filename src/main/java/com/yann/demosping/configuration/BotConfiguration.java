@@ -53,9 +53,7 @@ public class BotConfiguration {
 
     @Bean
     public ApplicationRunner runner(SimpleTelegramClient client, Dispatcher dispatcher) {
-        log.info("Bot berjalan. Menunggu pesan masuk...");
         return args -> {
-            log.info("TDLight Client siap. Mendaftarkan handler...");
             client.addUpdateHandler(TdApi.UpdateNewMessage.class, dispatcher::onUpdateMessage);
         };
     }
