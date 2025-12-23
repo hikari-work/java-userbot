@@ -56,9 +56,7 @@ public class Dispatcher {
                         if (chatId == 0L && client.getMe().id != chatId) {
                             return;
                         }
-
                     }
-                    log.info("Container is Not Null");
                     try {
                         container.method().invoke(container.bean(), message, parts.length > 1 ? parts[1] : "");
                     } catch (IllegalAccessException | InvocationTargetException e) {
