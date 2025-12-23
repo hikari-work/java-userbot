@@ -108,7 +108,7 @@ public class Log {
 
     private void startLiveLog(long chatId, long messageId) {
         String tail = getLogDetails("tail", 10);
-        editMessage(chatId, messageId, "🖥️ <b>Starting Live Log...</b>\n" + "<blockquote expandable>" + tail + "</blockquote>");
+        editMessage(chatId, messageId, "🖥️ <b>Starting Live Log event...</b>\n" + "<blockquote expandable>" + tail + "</blockquote>");
 
         LinkedList<String> logBuffer = new LinkedList<>();
         int MAX_BUFFER_LINES = 15;
