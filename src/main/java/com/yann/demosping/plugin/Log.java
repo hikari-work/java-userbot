@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -24,7 +25,7 @@ import java.util.stream.Collectors;
 public class Log {
 
     private final SimpleTelegramClient client;
-    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
 
     private static final String LOG_FILE_NAME = "bot_runtime.log";
 
@@ -107,12 +108,13 @@ public class Log {
     }
 
     private void startLiveLog(long chatId, long messageId) {
-        String tail = getLogDetails("tail", 10);
-        editMessage(chatId, messageId, "🖥️ <b>Starting Live Log event...</b>\n" + "<blockquote expandable>" + tail + "</blockquote>");
+        editMessage(chatId, messageId, "🖥️ <b>Starting Live Log...</b>");
 
         LinkedList<String> logBuffer = new LinkedList<>();
         int MAX_BUFFER_LINES = 15;
         long TIMEOUT_MS = 60_000;
+
+        AtomicReference<String> lastSentContent = new AtomicReference<>("");
 
         scheduler.execute(() -> {
             Process process = null;
@@ -126,32 +128,35 @@ public class Log {
                 var updateTask = scheduler.scheduleAtFixedRate(() -> {
                     if (System.currentTimeMillis() - startTime > TIMEOUT_MS) return;
 
-                    if (!logBuffer.isEmpty()) {
-                        String logs;
-                        synchronized (logBuffer) {
-                            logs = String.join("\n", logBuffer);
-                        }
-
-                        String safeLogs = logs.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
-                        String fullText = "🖥️ <b>Live Log (tail -f):</b>\n<blockquote expandable>" + safeLogs + "</blockquote>";
-
-                        client.send(new TdApi.ParseTextEntities(fullText, new TdApi.TextParseModeHTML()), parseResult -> {
-                            if (parseResult.isError()) {
-                                System.err.println("Parse Error: " + parseResult.getError());
-                                return;
-                            }
-                            TdApi.FormattedText formattedText = parseResult.get();
-
-                            client.send(new TdApi.EditMessageText(
-                                    chatId, messageId, null,
-                                    new TdApi.InputMessageText(formattedText, null, true)
-                            ));
-                        });
+                    String logs;
+                    synchronized (logBuffer) {
+                        if (logBuffer.isEmpty()) return;
+                        logs = String.join("\n", logBuffer);
                     }
+
+                    if (logs.equals(lastSentContent.get())) {
+                        return;
+                    }
+
+                    String safeLogs = logs.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+                    String fullText = "🖥️ <b>Live Log (tail -f):</b>\n<blockquote expandable>" + safeLogs + "</blockquote>";
+
+                    lastSentContent.set(logs);
+
+                    client.send(new TdApi.ParseTextEntities(fullText, new TdApi.TextParseModeHTML()), parseResult -> {
+                        if (parseResult.isError()) return;
+
+                        client.send(new TdApi.EditMessageText(
+                                chatId, messageId, null,
+                                new TdApi.InputMessageText(parseResult.get(), null, true)
+                        ), result -> {
+                        });
+                    });
+
                 }, 2, 3, TimeUnit.SECONDS);
 
                 String line;
-                while ((System.currentTimeMillis() - startTime < TIMEOUT_MS) && (line = reader.readLine()) != null) {
+                while ((System.currentTimeMillis() - startTime < TIMEOUT_MS) && ((line = reader.readLine()) != null)) {
                     synchronized (logBuffer) {
                         logBuffer.add(line);
                         if (logBuffer.size() > MAX_BUFFER_LINES) {
@@ -163,11 +168,12 @@ public class Log {
                 updateTask.cancel(false);
                 if (finalProcess.isAlive()) finalProcess.destroy();
 
-                editMessage(chatId, messageId, "✅ <b>Live Log Stopped.</b>");
+                editMessage(chatId, messageId, "✅ <b>Live Log Stopped (Timeout).</b>");
 
             } catch (Exception e) {
                 if (process != null && process.isAlive()) process.destroy();
                 editMessage(chatId, messageId, "❌ Live Log Error: " + e.getMessage());
+                e.printStackTrace();
             }
         });
     }
