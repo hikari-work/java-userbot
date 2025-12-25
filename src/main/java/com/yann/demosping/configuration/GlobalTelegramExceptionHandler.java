@@ -25,6 +25,7 @@ public class GlobalTelegramExceptionHandler {
             case FormatTextNotValidException ignored -> handleTextFormatMessageException(ex);
             case SendMessageNotCompleteException ignored -> handleSendMessageException(ex);
             case EditMessageNotCompleteException ignored -> handleEditMessageException(ex);
+            case GetMessageException ignored -> handleEditMessageException(ex);
             default -> {
             }
         }

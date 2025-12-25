@@ -39,22 +39,6 @@ public class SendMessageUtils {
         });
         return messageFuture;
     }
-    public CompletableFuture<TdApi.Message> sendMessage(long chatId, String text, TdApi.TextParseMode parseMode, TdApi.InputMessageContent content) {
-        CompletableFuture<TdApi.Message> messageFuture = new CompletableFuture<>();
-        parseTextEntitiesUtils.formatText(text, parseMode).thenAcceptAsync(formattedText -> client.send(new TdApi.SendMessage(
-                chatId, 0, null, null, null, content
-        ), msgResult -> {
-            if (msgResult.isError()) {
-                messageFuture.completeExceptionally(new SendMessageNotCompleteException("Cannot Send Message", chatId, 0L));
-            }
-
-        })).exceptionally(throwable -> {
-            log.error("Error Sending Message");
-            messageFuture.completeExceptionally(throwable);
-            return null;
-        });
-        return messageFuture;
-    }
     public CompletableFuture<TdApi.Message> sendMessage(long chatId, long messageId, String text, TdApi.InputMessageContent content) {
         CompletableFuture<TdApi.Message> messageFuture = new CompletableFuture<>();
         parseTextEntitiesUtils.formatText(text).thenAcceptAsync(formattedText -> client.send(new TdApi.SendMessage(
