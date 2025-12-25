@@ -18,6 +18,7 @@ import java.nio.file.Files;
 public class OnUpdate {
 
     private final SimpleTelegramClient client;
+    private final Update update;
 
     @EventListener(ApplicationReadyEvent.class)
     public void update() {
@@ -68,6 +69,6 @@ public class OnUpdate {
     }
 
     public void editMessage(Long chatId, Long messageId, String text) {
-        Update.sendMessage(chatId, messageId, text, client);
+        update.editMessage(chatId, messageId, text);
     }
 }

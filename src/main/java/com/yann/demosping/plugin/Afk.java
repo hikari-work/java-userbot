@@ -1,8 +1,10 @@
 package com.yann.demosping.plugin;
 
 import com.yann.demosping.annotations.UserBotCommand;
+import com.yann.demosping.configuration.GlobalTelegramExceptionHandler;
 import com.yann.demosping.service.ModuleStateService;
 import com.yann.demosping.utils.ArgsParser;
+import com.yann.demosping.utils.EditMessageUtils;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +18,8 @@ public class Afk {
 
     private final SimpleTelegramClient client;
     private final ModuleStateService moduleStateService;
+    private final EditMessageUtils editMessageUtils;
+    private final GlobalTelegramExceptionHandler globalTelegramExceptionHandler;
 
     @UserBotCommand(commands = {"afk"}, description = """
             Fitur ini untuk setting AFK
@@ -37,22 +41,10 @@ public class Afk {
         }
 
         moduleStateService.setAfk(true, reason);
-        client.send(
-                new TdApi.ParseTextEntities(
-                        "Memulai AFK Mode Karena <code>" + reason + "</code>", new TdApi.TextParseModeHTML()
-                ), result -> {
-                    if (result.isError()) {
-                        return;
-                    }
-                    client.send(
-                            new TdApi.EditMessageText(
-                                    chatId, messageId, null,
-                                    new TdApi.InputMessageText(
-                                            result.get(), new TdApi.LinkPreviewOptions(), false
-                                    )
-                            )
-                    );
-                }
-        );
+        editMessageUtils.editMessage(chatId, messageId, "Memulai AFK Mode Karena <code>" + reason + "</code>")
+                        .exceptionally(ex -> {
+                            globalTelegramExceptionHandler.handle(ex);
+                            return null;
+                        });
     }
 }

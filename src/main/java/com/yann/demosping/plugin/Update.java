@@ -1,11 +1,13 @@
 package com.yann.demosping.plugin;
 
 import com.yann.demosping.annotations.UserBotCommand;
+import com.yann.demosping.configuration.GlobalTelegramExceptionHandler;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import com.yann.demosping.utils.EditMessageUtils;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -17,8 +19,10 @@ import java.util.concurrent.TimeUnit;
 @Component
 @RequiredArgsConstructor
 public class Update {
+    private final EditMessageUtils editMessageUtils;
 
     private final SimpleTelegramClient client;
+    private final GlobalTelegramExceptionHandler globalTelegramExceptionHandler;
 
     @UserBotCommand(commands = {"update"}, description = "", sudoOnly = true)
     public void update(TdApi.UpdateNewMessage message, String args) {
@@ -82,15 +86,10 @@ public class Update {
         sendMessage(chatId, messageId, text, client);
     }
 
-    public static void sendMessage(Long chatId, Long messageId, String text, SimpleTelegramClient client) {
-        client.send(
-                new TdApi.ParseTextEntities(text, new TdApi.TextParseModeHTML()), formatted -> {
-                    if (formatted.isError()) return;
-                    TdApi.FormattedText formattedText = formatted.get();
-                    client.send(
-                           new TdApi.EditMessageText(chatId, messageId, null, new TdApi.InputMessageText(formattedText, new TdApi.LinkPreviewOptions(), true))
-                    );
-                }
-        );
+    public void sendMessage(Long chatId, Long messageId, String text, SimpleTelegramClient client) {
+        editMessageUtils.editMessage(chatId, messageId, text).exceptionally(ex -> {
+            globalTelegramExceptionHandler.handle(ex);
+            return null;
+        });
     }
 }

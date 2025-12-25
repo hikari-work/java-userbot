@@ -1,9 +1,11 @@
 package com.yann.demosping.plugin;
 
 import com.yann.demosping.annotations.UserBotCommand;
+import com.yann.demosping.configuration.GlobalTelegramExceptionHandler;
 import com.yann.demosping.manager.CommandRegistry;
 import com.yann.demosping.service.ModuleStateService;
 import com.yann.demosping.utils.ArgsParser;
+import com.yann.demosping.utils.EditMessageUtils;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +22,8 @@ public class Filter {
     private final ModuleStateService moduleStateService;
     private final SimpleTelegramClient client;
     private final CommandRegistry commandRegistry;
+    private final EditMessageUtils editMessageUtils;
+    private final GlobalTelegramExceptionHandler globalTelegramExceptionHandler;
 
     @UserBotCommand(commands = {"filter", "filters"}, description = "", sudoOnly = true)
     public void sendFilterMessage(TdApi.UpdateNewMessage message, String args) {
@@ -60,20 +64,11 @@ public class Filter {
             if (sourceChatId == 0) sourceChatId = currentChatId;
             String savedValue = sourceChatId + ":" + sourceMsgId;
             moduleStateService.saveFilter(sourceChatId, filterTrigger, savedValue);
-            client.send(
-                    new TdApi.ParseTextEntities("<i>Trigger </i><code>" + filterTrigger +"</code><i> sudah di set</i>", new TdApi.TextParseModeHTML()),
-                    resultText -> {
-                        if (resultText.isError()) return;
-                        client.send(
-                                new TdApi.EditMessageText(
-                                        currentChatId,
-                                        message.message.id,
-                                        null,
-                                        new TdApi.InputMessageText(resultText.get(), new TdApi.LinkPreviewOptions(), false)
-                                )
-                        );
-                    }
-            );
+            editMessageUtils.editMessage(currentChatId, message.message.id, "<i>Trigger </i><code>\" + filterTrigger +\"</code><i> sudah di set</i>")
+                            .exceptionally(ex -> {
+                                globalTelegramExceptionHandler.handle(ex);
+                                return null;
+                            });
         } else {
             sendDescription(currentChatId, message.message.id);
         }
@@ -86,20 +81,10 @@ public class Filter {
         Map<Object, Object> allFilters = moduleStateService.getAllFilters(chatId);
         if (allFilters.containsKey(args.trim().toLowerCase())) {
             moduleStateService.deleteFilter(chatId, args.toLowerCase());
-            client.send(
-                    new TdApi.ParseTextEntities("DONE", new TdApi.TextParseModeHTML()),
-                    resultText -> {
-                        if (resultText.isError()) return;
-                        client.send(
-                                new TdApi.EditMessageText(
-                                        chatId,
-                                        messageId,
-                                        null,
-                                        new TdApi.InputMessageText(resultText.get(), new TdApi.LinkPreviewOptions(), false)
-                                )
-                        );
-                    }
-            );
+            editMessageUtils.editMessage(chatId, messageId, "DONE").exceptionally(ex -> {
+                globalTelegramExceptionHandler.handle(ex);
+                return null;
+            });
         } else {
             sendDescription(chatId, messageId);
         }
@@ -111,21 +96,10 @@ public class Filter {
         long messageId = message.message.id;
         Map<Object, Object> allFilters = moduleStateService.getAllFilters(chatId);
         if (allFilters == null ||allFilters.isEmpty()) {
-            client.send(
-                    new TdApi.ParseTextEntities(
-                            "Empty Filter", new TdApi.TextParseModeHTML()
-                    ), format -> {
-                        if (format.isError()) return;
-                        client.send(
-                                new TdApi.EditMessageText(
-                                        chatId,
-                                        messageId,
-                                        null,
-                                        new TdApi.InputMessageText(format.get(), new TdApi.LinkPreviewOptions(), false)
-                                )
-                        );
-                    }
-            );
+            editMessageUtils.editMessage(chatId, messageId, "Empty Filter").exceptionally(ex -> {
+                globalTelegramExceptionHandler.handle(ex);
+                return null;
+            });
         } else {
             sendListFilter(allFilters, chatId, messageId);
         }
@@ -133,40 +107,20 @@ public class Filter {
 
     private void sendDescription(Long chatId, Long messageId) {
         String text = commandRegistry.getCommand("addfilter").command().description();
-        client.send(
-                new TdApi.ParseTextEntities(text, new TdApi.TextParseModeHTML()), textFormatted -> {
-                    if (textFormatted.isError()) return;
-                    client.send(
-                            new TdApi.EditMessageText(
-                                    chatId,
-                                    messageId,
-                                    null,
-                                    new TdApi.InputMessageText(textFormatted.get(), new TdApi.LinkPreviewOptions(), false)
-                            )
-                    );
-                }
-        );
+        editMessageUtils.editMessage(chatId, messageId, text).exceptionally(ex -> {
+            globalTelegramExceptionHandler.handle(ex);
+            return null;
+        });
     }
     private void sendListFilter(Map<Object, Object> filters, Long chatId, Long messageId) {
         StringBuilder sb =  new StringBuilder("<b>List Known Filter In This Chat :\n");
         for (Map.Entry<Object, Object> map : filters.entrySet()) {
             sb.append("<code>").append(map.getKey().toString()).append("</code>\n");
         }
-        client.send(
-                new TdApi.ParseTextEntities(sb.toString(), new TdApi.TextParseModeHTML()), formatted -> {
-                    if (formatted.isError()) return;
-                    client.send(
-                            new TdApi.EditMessageText(
-                                    chatId,
-                                    messageId,
-                                    null,
-                                    new TdApi.InputMessageText(
-                                            formatted.get(), new TdApi.LinkPreviewOptions(), false
-                                    )
-                            )
-                    );
-                }
-        );
+        editMessageUtils.editMessage(chatId, messageId, sb.toString()).exceptionally(ex -> {
+            globalTelegramExceptionHandler.handle(ex);
+            return null;
+        });
 
     }
 }

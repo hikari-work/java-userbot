@@ -1,6 +1,8 @@
 package com.yann.demosping.plugin.management;
 
 import com.yann.demosping.annotations.UserBotCommand;
+import com.yann.demosping.configuration.GlobalTelegramExceptionHandler;
+import com.yann.demosping.utils.SendMessageUtils;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +18,8 @@ import java.util.List;
 public class Purge {
 
     private final SimpleTelegramClient client;
+    private final SendMessageUtils sendMessageUtils;
+    private final GlobalTelegramExceptionHandler globalTelegramExceptionHandler;
 
     @UserBotCommand(
             commands = {"purge", "purgeme", "del"},
@@ -127,7 +131,9 @@ public class Purge {
     }
 
     private void sendError(long chatId, long replyToMsgId, String text) {
-        client.send(new TdApi.SendMessage(chatId, 0, new TdApi.InputMessageReplyToMessage(replyToMsgId, null, 0), null, null,
-                new TdApi.InputMessageText(new TdApi.FormattedText(text, new TdApi.TextEntity[0]), null, false)));
+        sendMessageUtils.sendMessage(chatId, replyToMsgId, text).exceptionally(ex -> {
+            globalTelegramExceptionHandler.handle(ex);
+            return null;
+        });
     }
 }

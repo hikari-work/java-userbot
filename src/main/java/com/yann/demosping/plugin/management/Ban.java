@@ -1,9 +1,11 @@
 package com.yann.demosping.plugin.management;
 
 import com.yann.demosping.annotations.UserBotCommand;
+import com.yann.demosping.configuration.GlobalTelegramExceptionHandler;
 import com.yann.demosping.manager.CommandContainer;
 import com.yann.demosping.manager.CommandRegistry;
 import com.yann.demosping.utils.ArgsParser;
+import com.yann.demosping.utils.SendMessageUtils;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +23,8 @@ public class Ban {
 
     private final SimpleTelegramClient client;
     private final CommandRegistry commandRegistry;
+    private final SendMessageUtils sendMessageUtils;
+    private final GlobalTelegramExceptionHandler globalTelegramExceptionHandler;
 
     @UserBotCommand(commands = {"kick", "ban"}, description = "Gunakan reply lalu: .kick -t 1h", sudoOnly = true)
     public void ban(TdApi.UpdateNewMessage message, String args) {
@@ -99,12 +103,9 @@ public class Ban {
     }
 
     private void send(long chatId, String text) {
-        client.send(new TdApi.ParseTextEntities(text, new TdApi.TextParseModeHTML()), parseResult -> {
-            TdApi.FormattedText formattedText = parseResult.isError() ?
-                    new TdApi.FormattedText(text, null) : parseResult.get();
-
-            client.send(new TdApi.SendMessage(chatId, 0, null, null, null,
-                    new TdApi.InputMessageText(formattedText, new TdApi.LinkPreviewOptions(), true)));
+        sendMessageUtils.sendMessage(chatId, text).exceptionally(ex -> {
+            globalTelegramExceptionHandler.handle(ex);
+            return null;
         });
     }
 

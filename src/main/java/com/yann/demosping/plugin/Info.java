@@ -1,6 +1,8 @@
 package com.yann.demosping.plugin;
 
 import com.yann.demosping.annotations.UserBotCommand;
+import com.yann.demosping.configuration.GlobalTelegramExceptionHandler;
+import com.yann.demosping.utils.ParseTextEntitiesUtils;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +21,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class Info {
 
+    private final ParseTextEntitiesUtils parseTextEntitiesUtils;
+    private final GlobalTelegramExceptionHandler globalTelegramExceptionHandler;
     @Value("${user.id}")
     private Long userId;
 
@@ -153,17 +157,12 @@ public class Info {
         sb.append("<b>Status:</b> ").append(getUserStatus(user.status)).append("\n");
         sb.append("<b>Premium:</b> ").append(user.isPremium ? "✅ Yes" : "❌ No").append("\n");
 
-        // Cek Bot / Scam
         if (user.type instanceof TdApi.UserTypeBot) sb.append("<b>Type:</b> 🤖 Bot\n");
 
-        client.send(new TdApi.ParseTextEntities(sb.toString(), new TdApi.TextParseModeHTML()), res -> {
-            if (res.isError()) {
-                future.complete(new TdApi.FormattedText(sb.toString(), null));
-            } else {
-                future.complete(res.get());
-            }
+        return parseTextEntitiesUtils.formatText(sb.toString()).exceptionally(ex -> {
+            globalTelegramExceptionHandler.handle(ex);
+            return null;
         });
-        return future;
     }
 
     private CompletableFuture<List<TdApi.InputMessageContent>> generateMessageContent(long userId, TdApi.FormattedText caption) {

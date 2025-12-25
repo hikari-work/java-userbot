@@ -1,8 +1,11 @@
 package com.yann.demosping.plugin;
 
 import com.yann.demosping.annotations.UserBotCommand;
+import com.yann.demosping.configuration.GlobalTelegramExceptionHandler;
 import com.yann.demosping.utils.ArgsParser;
+import com.yann.demosping.utils.EditMessageUtils;
 import com.yann.demosping.utils.MessageLinkResolver;
+import com.yann.demosping.utils.SendMessageUtils;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +22,9 @@ public class ListMessage {
 
     private final SimpleTelegramClient client;
     private final MessageLinkResolver messageLinkResolver;
+    private final SendMessageUtils sendMessageUtils;
+    private final GlobalTelegramExceptionHandler globalTelegramExceptionHandler;
+    private final EditMessageUtils editMessageUtils;
 
     @UserBotCommand(commands = {"list", "lst"}, description = "Generate links 1 by 1")
     public void generateMessageLinks(TdApi.UpdateNewMessage message, String args) {
@@ -108,8 +114,14 @@ public class ListMessage {
 
 
     private void sendRawLink(long chatId, String text, Iterator<TdApi.Message> iter, String prefix, long statusId, int count) {
-        client.send(new TdApi.SendMessage(chatId, 0, null, null, null,
-                new TdApi.InputMessageText(new TdApi.FormattedText(text, new TdApi.TextEntity[0]), new TdApi.LinkPreviewOptions(), false)), res -> sendNextLink(chatId, iter, prefix, statusId, count + 1));
+        sendMessageUtils.sendMessage(chatId, statusId, text)
+                .thenAcceptAsync(message -> {
+                    sendNextLink(chatId, iter, prefix, statusId, count +1);
+                })
+                .exceptionally(ex -> {
+            globalTelegramExceptionHandler.handle(ex);
+            return null;
+        });
     }
 
     private String generatePrivateLink(long chatId, long messageId) {
@@ -141,10 +153,9 @@ public class ListMessage {
     }
 
     private void editHtml(long chatId, long msgId, String text) {
-        client.send(new TdApi.ParseTextEntities(text, new TdApi.TextParseModeHTML()), res -> {
-            if (res.isError()) return;
-            client.send(new TdApi.EditMessageText(chatId, msgId, null,
-                    new TdApi.InputMessageText(res.get(), new TdApi.LinkPreviewOptions(), false)));
+        editMessageUtils.editMessage(chatId, msgId, text).exceptionally(ex -> {
+            globalTelegramExceptionHandler.handle(ex);
+            return null;
         });
     }
     private void deleteMessage(long chatId, List<Long> messageId) {

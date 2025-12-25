@@ -1,6 +1,7 @@
 package com.yann.demosping.plugin;
 
 import com.yann.demosping.annotations.UserBotCommand;
+import com.yann.demosping.utils.EditMessageUtils;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
@@ -10,13 +11,13 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 import java.lang.management.*;
-import java.util.List;
 
 @Slf4j
 @Component
 @RequiredArgsConstructor
 public class Ping {
 
+    private final EditMessageUtils editMessageUtils;
     @Value("${user.id}")
     private Long userId;
 
@@ -27,46 +28,44 @@ public class Ping {
     public void pingHandler(TdApi.UpdateNewMessage update, String args) {
         long chatId = update.message.chatId;
         long messageId = update.message.id;
-        if (client.getMe().id != userId) return;
-        long startTime = System.currentTimeMillis();
 
+        if (client.getMe().id != userId) return;
+
+        long startTime = System.currentTimeMillis();
 
         try {
             String initialText = "<i>Pinging..</i>";
-            client.send(new TdApi.ParseTextEntities(initialText, new TdApi.TextParseModeHTML()), parseResult -> {
-                if (parseResult.isError()) return;
 
-                TdApi.FormattedText initialFmt = parseResult.get();
-
-                client.send(new TdApi.EditMessageText(chatId, messageId, null,
-                        new TdApi.InputMessageText(initialFmt, new TdApi.LinkPreviewOptions(), false)
-                ), sentResult -> {
-                    if (!sentResult.isError()) {
+            editMessageUtils.editMessage(chatId, messageId, initialText)
+                    .thenAccept(message -> {
                         long totalTime = (System.currentTimeMillis() - startTime) / 4;
                         String finalStats = getRuntimeInformation(totalTime);
 
-                        client.send(
-                                new TdApi.ParseTextEntities(finalStats,
-                                        new TdApi.TextParseModeHTML()), finalParseResult -> {
-                            if (finalParseResult.isError()) return;
-
-                            TdApi.FormattedText finalFmt = finalParseResult.get();
-                            client.send(new TdApi.EditMessageText(
-                                    chatId, messageId, null,
-                                    new TdApi.InputMessageText(finalFmt, new TdApi.LinkPreviewOptions(), false)
-                            ));
-                        });
-                    }
-                });
-            });
+                        editMessageUtils.editMessage(chatId, messageId, finalStats)
+                                .exceptionally(error -> {
+                                    log.error("Failed to edit final stats: {}", error.getMessage());
+                                    return null;
+                                });
+                    })
+                    .exceptionally(error -> {
+                        log.error("Failed to edit initial message: {}", error.getMessage());
+                        return null;
+                    });
 
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            log.error("Error in ping handler: {}", e.getMessage(), e);
+            editMessageUtils.editMessage(chatId, messageId, "❌ Error: " + e.getMessage())
+                    .exceptionally(error -> {
+                        log.error("Failed to edit error message: {}", error.getMessage());
+                        return null;
+                    });
         }
     }
+
     private String getRuntimeInformation(Long latency) {
         return String.format("<b>Pong!</b>\nLatency: <code>%dms</code>\n\n", latency) + getInternalRuntime();
     }
+
     private String getInternalRuntime() {
         RuntimeMXBean runtime = ManagementFactory.getRuntimeMXBean();
         ThreadMXBean threadBean = ManagementFactory.getThreadMXBean();
