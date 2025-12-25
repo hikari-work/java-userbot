@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -36,19 +37,17 @@ public class DramaBox {
         Map<String, String> param = ArgsParser.parse(args);
         long chatId = update.message.chatId;
 
-        // Ambil Bot ID dari token
         long botUserId = Long.parseLong(botToken.split(":")[0]);
-        String query = "dramabox " + param.getOrDefault("s", ""); // Safe get
+        String query = "dramabox " + param.getOrDefault("s", "");
+        client.send(new TdApi.DeleteMessages(chatId, new long[]{update.message.id}, true));
 
         inlineQueryUtils.getInlineQueryResult(botUserId, query, chatId, "")
                 .thenCompose(resultInline -> {
-                    // 1. Cek apakah hasil kosong
                     if (resultInline.results.length == 0) {
                         log.warn("Tidak ada hasil ditemukan untuk query: {}", query);
                         return CompletableFuture.completedFuture(null);
                     }
 
-                    // 2. Ambil item pertama
                     TdApi.InlineQueryResult result = resultInline.results[0];
                     String resultId = "";
                     if (result instanceof TdApi.InlineQueryResultArticle article) {
