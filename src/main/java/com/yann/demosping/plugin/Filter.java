@@ -6,7 +6,6 @@ import com.yann.demosping.manager.CommandRegistry;
 import com.yann.demosping.service.ModuleStateService;
 import com.yann.demosping.utils.ArgsParser;
 import com.yann.demosping.utils.EditMessageUtils;
-import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,7 +19,6 @@ import java.util.Map;
 public class Filter {
 
     private final ModuleStateService moduleStateService;
-    private final SimpleTelegramClient client;
     private final CommandRegistry commandRegistry;
     private final EditMessageUtils editMessageUtils;
     private final GlobalTelegramExceptionHandler globalTelegramExceptionHandler;

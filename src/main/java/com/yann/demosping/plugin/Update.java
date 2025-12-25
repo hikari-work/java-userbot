@@ -2,9 +2,7 @@ package com.yann.demosping.plugin;
 
 import com.yann.demosping.annotations.UserBotCommand;
 import com.yann.demosping.configuration.GlobalTelegramExceptionHandler;
-import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import com.yann.demosping.utils.EditMessageUtils;
@@ -17,12 +15,16 @@ import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class Update {
     private final EditMessageUtils editMessageUtils;
 
-    private final SimpleTelegramClient client;
     private final GlobalTelegramExceptionHandler globalTelegramExceptionHandler;
+
+    public Update(EditMessageUtils editMessageUtils,
+                  GlobalTelegramExceptionHandler globalTelegramExceptionHandler) {
+        this.editMessageUtils = editMessageUtils;
+        this.globalTelegramExceptionHandler = globalTelegramExceptionHandler;
+    }
 
     @UserBotCommand(commands = {"update"}, description = "", sudoOnly = true)
     public void update(TdApi.UpdateNewMessage message, String args) {
@@ -83,10 +85,10 @@ public class Update {
         }
     }
     public void editMessage(Long chatId, Long messageId, String text) {
-        sendMessage(chatId, messageId, text, client);
+        sendMessage(chatId, messageId, text);
     }
 
-    public void sendMessage(Long chatId, Long messageId, String text, SimpleTelegramClient client) {
+    public void sendMessage(Long chatId, Long messageId, String text) {
         editMessageUtils.editMessage(chatId, messageId, text).exceptionally(ex -> {
             globalTelegramExceptionHandler.handle(ex);
             return null;

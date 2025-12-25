@@ -4,8 +4,8 @@ import com.yann.demosping.annotations.UserBotCommand;
 import com.yann.demosping.utils.ArgsParser;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
@@ -21,13 +21,16 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class Log {
 
     private final SimpleTelegramClient client;
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
 
     private static final String LOG_FILE_NAME = "bot_runtime.log";
+
+    public Log(@Qualifier("userBotClient") SimpleTelegramClient client) {
+        this.client = client;
+    }
 
     @UserBotCommand(commands = {"log"}, description = "Read, Tail, or Get Log File", sudoOnly = true)
     public void logProcess(TdApi.UpdateNewMessage message, String args) {

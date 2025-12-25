@@ -5,8 +5,8 @@ import com.yann.demosping.configuration.GlobalTelegramExceptionHandler;
 import com.yann.demosping.utils.ParseTextEntitiesUtils;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -18,7 +18,6 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class Info {
 
     private final ParseTextEntitiesUtils parseTextEntitiesUtils;
@@ -27,6 +26,14 @@ public class Info {
     private Long userId;
 
     private final SimpleTelegramClient client;
+
+    public Info(ParseTextEntitiesUtils parseTextEntitiesUtils,
+                GlobalTelegramExceptionHandler globalTelegramExceptionHandler,
+                @Qualifier("userBotClient") SimpleTelegramClient client) {
+        this.parseTextEntitiesUtils = parseTextEntitiesUtils;
+        this.globalTelegramExceptionHandler = globalTelegramExceptionHandler;
+        this.client = client;
+    }
 
     @UserBotCommand(
             commands = {"info", "whois"},

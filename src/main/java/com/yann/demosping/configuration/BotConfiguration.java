@@ -1,11 +1,10 @@
 package com.yann.demosping.configuration;
 
-import com.yann.demosping.manager.Dispatcher;
-import it.tdlight.Log;
-import it.tdlight.Slf4JLogMessageHandler;
+import com.yann.demosping.bot.manager.InlineBotDispatcher;
 import it.tdlight.client.*;
 import it.tdlight.jni.TdApi;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Bean;
@@ -18,8 +17,8 @@ import java.nio.file.Paths;
 @Configuration
 public class BotConfiguration {
 
-    @Value("${phone.number}")
-    private String phoneNumber;
+    @Value("${bot.token}")
+    private String botToken;
 
     @Value("${api.hash}")
     private String apiHash;
@@ -27,34 +26,30 @@ public class BotConfiguration {
     @Value("${api.id}")
     private Integer apiId;
 
-    @Bean
-    public TDLibSettings setSettings() {
-        Log.setLogMessageHandler(1, new Slf4JLogMessageHandler());
+    @Bean("bot")
+    public TDLibSettings settings() {
         APIToken token = new APIToken(apiId, apiHash);
         TDLibSettings settings = TDLibSettings.create(token);
-        Path path = Paths.get("tdlib-user-bot");
-        settings.setDatabaseDirectoryPath(path.resolve("data"));
-        settings.setDownloadedFilesDirectoryPath(path.resolve("downloads"));
+        Path path = Paths.get("tdlib-bot");
+        settings.setDatabaseDirectoryPath(path.resolve("bot-data"));
+        settings.setDownloadedFilesDirectoryPath(path.resolve("bot-downloads"));
         return settings;
     }
-
-    @Bean
-    public AuthenticationSupplier<?> authentication() {
-        return AuthenticationSupplier.user(phoneNumber);
+    @Bean("botSupplier")
+    public AuthenticationSupplier<?> supplier() {
+        return AuthenticationSupplier.bot(botToken);
     }
-
-    @Bean
-    public SimpleTelegramClient clientBuilder(TDLibSettings settings,
-                                              AuthenticationSupplier<?> authenticationSupplier) {
-
+    @Bean("botClient")
+    public SimpleTelegramClient runner(@Qualifier("botSupplier") AuthenticationSupplier<?> supplier,
+                                       @Qualifier("bot") TDLibSettings settings) {
         SimpleTelegramClientFactory simpleTelegramClientFactory = new SimpleTelegramClientFactory();
-        return simpleTelegramClientFactory.builder(settings).build(authenticationSupplier);
+        return simpleTelegramClientFactory.builder(settings).build(supplier);
     }
-
     @Bean
-    public ApplicationRunner runner(SimpleTelegramClient client, Dispatcher dispatcher) {
+    public ApplicationRunner botRunner(@Qualifier("botClient") SimpleTelegramClient client, InlineBotDispatcher inlineBotDispatcher) {
         return args -> {
-            client.addUpdateHandler(TdApi.UpdateNewMessage.class, dispatcher::onUpdateMessage);
+            log.info("Bot Created");
+            client.addUpdateHandler(TdApi.UpdateNewInlineQuery.class, inlineBotDispatcher::dispatch);
         };
     }
 }

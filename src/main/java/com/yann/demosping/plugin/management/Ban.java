@@ -9,6 +9,7 @@ import com.yann.demosping.utils.SendMessageUtils;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 
@@ -18,12 +19,23 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Component
-@RequiredArgsConstructor
 public class Ban {
 
     private final SimpleTelegramClient client;
+
     private final CommandRegistry commandRegistry;
     private final SendMessageUtils sendMessageUtils;
+
+    public Ban(@Qualifier("userBotClient") SimpleTelegramClient client,
+               CommandRegistry commandRegistry,
+               SendMessageUtils sendMessageUtils,
+               GlobalTelegramExceptionHandler globalTelegramExceptionHandler) {
+        this.client = client;
+        this.commandRegistry = commandRegistry;
+        this.sendMessageUtils = sendMessageUtils;
+        this.globalTelegramExceptionHandler = globalTelegramExceptionHandler;
+    }
+
     private final GlobalTelegramExceptionHandler globalTelegramExceptionHandler;
 
     @UserBotCommand(commands = {"kick", "ban"}, description = "Gunakan reply lalu: .kick -t 1h", sudoOnly = true)

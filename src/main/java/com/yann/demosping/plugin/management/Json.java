@@ -18,10 +18,8 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class Json {
 
-    private final SimpleTelegramClient client;
     private final ObjectMapper mapper = new ObjectMapper();
     private final MessageUtils messageUtils;
-    private final SendMessageUtils sendMessageUtils;
     private final EditMessageUtils editMessageUtils;
     private final ChatUtils chatUtils;
     private final GlobalTelegramExceptionHandler globalTelegramExceptionHandler;

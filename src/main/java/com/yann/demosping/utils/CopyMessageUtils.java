@@ -3,7 +3,7 @@ package com.yann.demosping.utils;
 import it.tdlight.jni.TdApi;
 import org.springframework.stereotype.Component;
 
-// Input Message
+
 @Component
 public class CopyMessageUtils {
 

@@ -1,7 +1,6 @@
 package com.yann.demosping.plugin;
 
 import com.yann.demosping.event.FileDownloadEvent;
-import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -14,7 +13,6 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class DownloadManager {
 
-    private final SimpleTelegramClient client;
     private final ApplicationEventPublisher publisher;
 
     private final Map<Integer, String> pendingDownloads = new ConcurrentHashMap<>();

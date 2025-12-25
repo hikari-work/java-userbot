@@ -3,19 +3,24 @@ package com.yann.demosping.utils;
 import com.yann.demosping.exceptions.SendMessageNotCompleteException;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.CompletableFuture;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class SendMessageUtils {
+
 
     private final SimpleTelegramClient client;
     private final ParseTextEntitiesUtils parseTextEntitiesUtils;
+
+    public SendMessageUtils(@Qualifier("userBotClient") SimpleTelegramClient client, ParseTextEntitiesUtils parseTextEntitiesUtils) {
+        this.client = client;
+        this.parseTextEntitiesUtils = parseTextEntitiesUtils;
+    }
 
     public CompletableFuture<TdApi.Message> sendMessage(long chatId, long messageId, String text, TdApi.TextParseMode parseMode) {
         CompletableFuture<TdApi.Message> messageFuture = new CompletableFuture<>();

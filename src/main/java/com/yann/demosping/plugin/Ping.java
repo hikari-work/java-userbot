@@ -4,8 +4,8 @@ import com.yann.demosping.annotations.UserBotCommand;
 import com.yann.demosping.utils.EditMessageUtils;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
@@ -14,7 +14,6 @@ import java.lang.management.*;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class Ping {
 
     private final EditMessageUtils editMessageUtils;
@@ -22,6 +21,11 @@ public class Ping {
     private Long userId;
 
     private final SimpleTelegramClient client;
+
+    public Ping(EditMessageUtils editMessageUtils, @Qualifier("userBotClient") SimpleTelegramClient client) {
+        this.editMessageUtils = editMessageUtils;
+        this.client = client;
+    }
 
     @Async
     @UserBotCommand(commands = {"p", "ping"}, description = "Cek Ping Server", sudoOnly = true)

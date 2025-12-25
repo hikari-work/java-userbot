@@ -5,7 +5,6 @@ import com.yann.demosping.configuration.GlobalTelegramExceptionHandler;
 import com.yann.demosping.service.ModuleStateService;
 import com.yann.demosping.utils.ArgsParser;
 import com.yann.demosping.utils.EditMessageUtils;
-import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -16,7 +15,6 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class Afk {
 
-    private final SimpleTelegramClient client;
     private final ModuleStateService moduleStateService;
     private final EditMessageUtils editMessageUtils;
     private final GlobalTelegramExceptionHandler globalTelegramExceptionHandler;

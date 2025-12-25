@@ -2,8 +2,8 @@ package com.yann.demosping.manager;
 
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
@@ -13,12 +13,19 @@ import java.util.List;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class Dispatcher {
 
     private final SimpleTelegramClient client;
 
     private final CommandRegistry commandRegistry;
+
+    public Dispatcher(@Qualifier("userBotClient") SimpleTelegramClient client,
+                      CommandRegistry commandRegistry,
+                      List<BotInterceptor> interceptors) {
+        this.client = client;
+        this.commandRegistry = commandRegistry;
+        this.interceptors = interceptors;
+    }
 
     private final List<BotInterceptor> interceptors;
 

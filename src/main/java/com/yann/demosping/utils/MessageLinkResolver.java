@@ -2,8 +2,8 @@ package com.yann.demosping.utils;
 
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
@@ -11,10 +11,14 @@ import java.util.concurrent.CompletableFuture;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class MessageLinkResolver {
 
+
     private final SimpleTelegramClient client;
+
+    public MessageLinkResolver(@Qualifier("userBotClient") SimpleTelegramClient client) {
+        this.client = client;
+    }
 
     @Async
     public CompletableFuture<TdApi.Message> resolve(String link) {

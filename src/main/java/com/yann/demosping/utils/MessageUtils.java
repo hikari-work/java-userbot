@@ -3,16 +3,19 @@ package com.yann.demosping.utils;
 import com.yann.demosping.exceptions.GetMessageException;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.CompletableFuture;
 
 @Component
-@RequiredArgsConstructor
 public class MessageUtils {
 
     private final SimpleTelegramClient client;
+
+    public MessageUtils(@Qualifier("userBotClient") SimpleTelegramClient client) {
+        this.client = client;
+    }
 
     public CompletableFuture<TdApi.Message> getMessage(long chatId, long messageId, long currentMessageId) {
         CompletableFuture<TdApi.Message> messageFuture = new CompletableFuture<>();

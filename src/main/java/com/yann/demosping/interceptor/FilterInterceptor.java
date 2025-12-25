@@ -6,7 +6,7 @@ import com.yann.demosping.service.ModuleStateService;
 import com.yann.demosping.utils.CopyMessageUtils;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -14,7 +14,6 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 @Component
-@RequiredArgsConstructor
 @Order(0)
 public class FilterInterceptor implements BotInterceptor {
 
@@ -22,6 +21,14 @@ public class FilterInterceptor implements BotInterceptor {
 
     private final SimpleTelegramClient client;
     private final CopyMessageUtils copyMessageUtils;
+
+    public FilterInterceptor(ModuleStateService stateService,
+                             @Qualifier("userBotClient") SimpleTelegramClient client,
+                             CopyMessageUtils copyMessageUtils) {
+        this.stateService = stateService;
+        this.client = client;
+        this.copyMessageUtils = copyMessageUtils;
+    }
 
     @Override
     public boolean preHandle(TdApi.UpdateNewMessage message, String args) {

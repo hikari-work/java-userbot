@@ -10,6 +10,7 @@ import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -17,7 +18,6 @@ import java.util.function.Consumer;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class ListMessage {
 
     private final SimpleTelegramClient client;
@@ -25,6 +25,18 @@ public class ListMessage {
     private final SendMessageUtils sendMessageUtils;
     private final GlobalTelegramExceptionHandler globalTelegramExceptionHandler;
     private final EditMessageUtils editMessageUtils;
+
+    public ListMessage(@Qualifier("userBotClient") SimpleTelegramClient client,
+                       MessageLinkResolver messageLinkResolver,
+                       SendMessageUtils sendMessageUtils,
+                       GlobalTelegramExceptionHandler globalTelegramExceptionHandler,
+                       EditMessageUtils editMessageUtils) {
+        this.client = client;
+        this.messageLinkResolver = messageLinkResolver;
+        this.sendMessageUtils = sendMessageUtils;
+        this.globalTelegramExceptionHandler = globalTelegramExceptionHandler;
+        this.editMessageUtils = editMessageUtils;
+    }
 
     @UserBotCommand(commands = {"list", "lst"}, description = "Generate links 1 by 1")
     public void generateMessageLinks(TdApi.UpdateNewMessage message, String args) {

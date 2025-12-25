@@ -1,8 +1,9 @@
 package com.yann.demosping.interceptor;
 
+import com.yann.demosping.configuration.GlobalTelegramExceptionHandler;
 import com.yann.demosping.manager.BotInterceptor;
 import com.yann.demosping.service.ModuleStateService;
-import it.tdlight.client.SimpleTelegramClient;
+import com.yann.demosping.utils.SendMessageUtils;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,7 +15,8 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class AFKInterceptor implements BotInterceptor {
 
-    private final SimpleTelegramClient client;
+    private final SendMessageUtils sendMessageUtils;
+    private final GlobalTelegramExceptionHandler globalTelegramExceptionHandler;
 
     @Value("${user.id}")
     private String userId;
@@ -62,16 +64,9 @@ public class AFKInterceptor implements BotInterceptor {
         long chatId = message.message.chatId;
         String sb = "<b>Kembali Online</b>\n" +
                 "Setelah AFK : <code>" + moduleStateService.getAfkDuration() + "</code>";
-        client.send(new TdApi.ParseTextEntities(sb, new TdApi.TextParseModeHTML()), parsedText -> {
-            if (parsedText.isError()) {
-                return;
-            }
-            TdApi.FormattedText text = parsedText.get();
-            client.send(
-                    new TdApi.SendMessage(
-                        chatId, 0L, null, null, null,
-                            new TdApi.InputMessageText(text, new TdApi.LinkPreviewOptions(), false)
-            ));
+        sendMessageUtils.sendMessage(chatId, sb).exceptionally(ex -> {
+           globalTelegramExceptionHandler.handle(ex);
+           return null;
         });
         moduleStateService.setAfk(false, "false");
     }
@@ -79,20 +74,9 @@ public class AFKInterceptor implements BotInterceptor {
         long chatId = message.message.chatId;
         long messageId = message.message.id;
         String text = "<b>User sedang AFK\nKarena : " + moduleStateService.getAfkReason();
-        client.send(
-                new TdApi.ParseTextEntities(
-                        text, new TdApi.TextParseModeHTML()
-                ), textFormat -> {
-                    TdApi.FormattedText formattedText = textFormat.get();
-                    client.send(
-                            new TdApi.SendMessage(
-                                    chatId, messageId, null, null, null,
-                                    new TdApi.InputMessageText(
-                                            formattedText, new TdApi.LinkPreviewOptions(), false
-                                    )
-                            )
-                    );
-                }
-        );
+        sendMessageUtils.sendMessage(chatId, messageId, text).exceptionally(ex -> {
+            globalTelegramExceptionHandler.handle(ex);
+            return null;
+        });
     }
 }

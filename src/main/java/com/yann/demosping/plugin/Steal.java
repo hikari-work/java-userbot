@@ -8,8 +8,8 @@ import it.tdlight.client.GenericResultHandler;
 import it.tdlight.client.Result;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
@@ -22,7 +22,6 @@ import java.util.concurrent.CompletableFuture;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class Steal {
 
     private static final String LINK_ARG = "l";
@@ -31,6 +30,14 @@ public class Steal {
     private final SimpleTelegramClient client;
     private final MessageLinkResolver messageLinkResolver;
     private final CopyMessageUtils copyMessageUtils;
+
+    public Steal(@Qualifier("userBotClient") SimpleTelegramClient client,
+                 MessageLinkResolver messageLinkResolver,
+                 CopyMessageUtils copyMessageUtils) {
+        this.client = client;
+        this.messageLinkResolver = messageLinkResolver;
+        this.copyMessageUtils = copyMessageUtils;
+    }
 
     @UserBotCommand(
             commands = {"steal"},

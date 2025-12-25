@@ -5,8 +5,8 @@ import com.yann.demosping.configuration.GlobalTelegramExceptionHandler;
 import com.yann.demosping.utils.SendMessageUtils;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -14,11 +14,19 @@ import java.util.List;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class Purge {
 
     private final SimpleTelegramClient client;
     private final SendMessageUtils sendMessageUtils;
+
+    public Purge(@Qualifier("userBotClient") SimpleTelegramClient client,
+                 SendMessageUtils sendMessageUtils,
+                 GlobalTelegramExceptionHandler globalTelegramExceptionHandler) {
+        this.client = client;
+        this.sendMessageUtils = sendMessageUtils;
+        this.globalTelegramExceptionHandler = globalTelegramExceptionHandler;
+    }
+
     private final GlobalTelegramExceptionHandler globalTelegramExceptionHandler;
 
     @UserBotCommand(
