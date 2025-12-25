@@ -99,14 +99,13 @@ public class InlineBotRegistry implements ApplicationListener<ContextRefreshedEv
             return false;
         }
 
-        // Check parameter count and type
         Class<?>[] paramTypes = method.getParameterTypes();
         if (paramTypes.length != 1) {
             return false;
         }
 
-        // Check if parameter is UpdateNewInlineQuery
-        return paramTypes[0].getName().equals("it.tdlight.jni.TdApi$UpdateNewInlineQuery");
+        Class<?> paramType = paramTypes[0];
+        return paramType.getCanonicalName().endsWith("TdApi.UpdateNewInlineQuery");
     }
 
     /**

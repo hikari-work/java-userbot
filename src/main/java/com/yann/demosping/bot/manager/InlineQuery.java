@@ -7,6 +7,6 @@ import java.lang.annotation.*;
 @Documented
 public @interface InlineQuery {
 
-    String commands();
+    String commands() default "";
     String regex() default "";
 }
