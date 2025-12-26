@@ -44,7 +44,7 @@ public class DramaBoxInline {
                     TdApi.AnswerInlineQuery answer = new TdApi.AnswerInlineQuery(
                             inlineQuery.id,
                             false,
-                            button,
+                            null,
                             results,
                             500,
                             ""
