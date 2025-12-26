@@ -39,7 +39,6 @@ public class DramaBox {
 
         long botUserId = Long.parseLong(botToken.split(":")[0]);
         String query = "dramabox " + param.getOrDefault("s", "");
-        client.send(new TdApi.DeleteMessages(chatId, new long[]{update.message.id}, true));
 
         inlineQueryUtils.getInlineQueryResult(botUserId, query, chatId, "")
                 .thenCompose(resultInline -> {
