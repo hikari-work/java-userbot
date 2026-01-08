@@ -13,7 +13,6 @@ import org.springframework.stereotype.Component;
 public class FastFetchHandler {
 
     private final ShellExecutors executors;
-    private final SendMessageUtils sendMessageUtils;
     private final EditMessageUtils editMessageUtils;
 
     @UserBotCommand(commands = "fastfetch", description = "", sudoOnly = true)
