@@ -63,7 +63,7 @@ public class SendMessageUtils {
     public CompletableFuture<TdApi.Message> sendMessage(long chatId, long messageId, String text) {
         CompletableFuture<TdApi.Message> messageFuture = new CompletableFuture<>();
         parseTextEntitiesUtils.formatText(text).thenAcceptAsync(formattedText -> client.send(
-                new TdApi.SendMessage(chatId, messageId, null, null, null, new TdApi.InputMessageText(formattedText, new TdApi.LinkPreviewOptions(), false)), message -> {
+                new TdApi.SendMessage(chatId, 0, null, null, null, new TdApi.InputMessageText(formattedText, new TdApi.LinkPreviewOptions(), false)), message -> {
                     if (message.isError()) {
                         TdApi.Error error = message.getError();
                         if (error.code == 429) {

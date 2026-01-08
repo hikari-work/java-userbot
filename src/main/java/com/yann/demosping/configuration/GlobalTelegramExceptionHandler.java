@@ -2,6 +2,7 @@ package com.yann.demosping.configuration;
 
 import com.yann.demosping.exceptions.*;
 import com.yann.demosping.utils.EditMessageUtils;
+import com.yann.demosping.utils.SendMessageUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Component;
 public class GlobalTelegramExceptionHandler {
 
     public final EditMessageUtils editMessageUtils;
+    private final SendMessageUtils sendMessageUtils;
 
     public void handle(Throwable throwable) {
         Throwable cause = throwable.getCause() != null ? throwable.getCause() : throwable;
@@ -47,7 +49,7 @@ public class GlobalTelegramExceptionHandler {
 
             editMessageUtils.editMessage(ex.getChatId(), ex.getMessageId(), errorMessage)
                     .exceptionally(editError -> {
-                        log.error("Failed to edit message: {}", editError.getMessage());
+                        sendMessageUtils.sendMessage(ex.getChatId(), 0, errorMessage);
                         return null;
                     });
         }

@@ -6,10 +6,12 @@ import com.yann.demosping.service.ModuleStateService;
 import com.yann.demosping.utils.SendMessageUtils;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
+@Slf4j
 @Order(0)
 @Component
 @RequiredArgsConstructor
@@ -28,7 +30,7 @@ public class AFKInterceptor implements BotInterceptor {
     public boolean preHandle(TdApi.UpdateNewMessage message, String args) {
         if (isMe(message)) {
             if (moduleStateService.isAfk()) {
-                disableAfk(message);
+                if (!isAfkNotification(message)) disableAfk(message);
                 return false;
             }
             return true;
@@ -54,7 +56,7 @@ public class AFKInterceptor implements BotInterceptor {
         if (message.message.content instanceof TdApi.MessageText text) {
             for (TdApi.TextEntity entity : text.text.entities) {
                 if (entity.type instanceof TdApi.TextEntityTypeMentionName mention) {
-                    if (mention.userId == Long.parseLong(userId)) return true;
+                    if (mention.userId == Long.parseLong(userId)) return false;
                 }
             }
         }
@@ -73,10 +75,17 @@ public class AFKInterceptor implements BotInterceptor {
     private void notifyIsUserAfk(TdApi.UpdateNewMessage message) {
         long chatId = message.message.chatId;
         long messageId = message.message.id;
-        String text = "<b>User sedang AFK\nKarena : " + moduleStateService.getAfkReason();
+        String text = "<b>User sedang AFK</b>\nKarena : " + moduleStateService.getAfkReason();
         sendMessageUtils.sendMessage(chatId, messageId, text).exceptionally(ex -> {
             globalTelegramExceptionHandler.handle(ex);
             return null;
         });
+    }
+    private boolean isAfkNotification(TdApi.UpdateNewMessage message) {
+        if (message.message.content instanceof TdApi.MessageText text) {
+            log.info(text.text.text);
+            return text.text.text.startsWith("User sedang AFK");
+        }
+        return false;
     }
 }

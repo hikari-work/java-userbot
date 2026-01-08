@@ -1,5 +1,6 @@
 package com.yann.demosping.configuration;
 
+import com.yann.demosping.bot.manager.CallbackDispatcher;
 import com.yann.demosping.manager.Dispatcher;
 import it.tdlight.Log;
 import it.tdlight.Slf4JLogMessageHandler;
@@ -53,9 +54,10 @@ public class UserBotConfiguration {
     }
 
     @Bean
-    public ApplicationRunner runner(@Qualifier("userBotClient") SimpleTelegramClient client, Dispatcher dispatcher) {
+    public ApplicationRunner runner(@Qualifier("userBotClient") SimpleTelegramClient client, Dispatcher dispatcher, CallbackDispatcher callbackDispatcher) {
         return args -> {
             client.addUpdateHandler(TdApi.UpdateNewMessage.class, dispatcher::onUpdateMessage);
+            client.addUpdateHandler(TdApi.UpdateNewCallbackQuery.class, callbackDispatcher::dispatch);
         };
     }
 }

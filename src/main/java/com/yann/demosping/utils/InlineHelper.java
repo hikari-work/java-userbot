@@ -5,6 +5,7 @@ import it.tdlight.jni.TdApi;
 import org.jspecify.annotations.NonNull;
 import org.springframework.stereotype.Component;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -79,7 +80,7 @@ public class InlineHelper {
                         {
                                 new TdApi.InlineKeyboardButton(
                                         "Buka Detail 📂",
-                                        new TdApi.InlineKeyboardButtonTypeCallback(payloadData.getBytes())
+                                        new TdApi.InlineKeyboardButtonTypeCallback((payloadData + id).getBytes(StandardCharsets.UTF_8))
                                 )
                         }
                 }
