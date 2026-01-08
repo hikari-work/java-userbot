@@ -1,0 +1,33 @@
+package com.yann.demosping.plugin;
+
+import com.yann.demosping.annotations.UserBotCommand;
+import com.yann.demosping.service.ShellExecutors;
+import com.yann.demosping.utils.EditMessageUtils;
+import com.yann.demosping.utils.SendMessageUtils;
+import it.tdlight.jni.TdApi;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
+
+@Component
+@RequiredArgsConstructor
+public class FastFetchHandler {
+
+    private final ShellExecutors executors;
+    private final SendMessageUtils sendMessageUtils;
+    private final EditMessageUtils editMessageUtils;
+
+    @UserBotCommand(commands = "fastfetch", description = "", sudoOnly = true)
+    public void fastFetch(TdApi.UpdateNewMessage message, String args) {
+        long chatId = message.message.chatId;
+        long messageId = message.message.id;
+        editMessageUtils.editMessage(chatId, messageId, "Fetching...")
+                .thenAcceptAsync(sendMessage -> {
+                    executors.execute("fastfetch")
+                            .thenAccept(result -> {
+                                String formatted = "<code>\n" + result + "\n</code>";
+                                editMessageUtils.editMessage(chatId, messageId, formatted);
+                            });
+                });
+    }
+
+}
