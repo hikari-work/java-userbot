@@ -65,7 +65,7 @@ public class Network {
                     totalSent += sent;
                     totalReceived += recv;
                     String line = String.format("%-11s | %8s | %8s",
-                            truncate(typeName, 11),
+                            truncate(typeName),
                             formatSize(sent),
                             formatSize(recv));
 
@@ -106,12 +106,12 @@ public class Network {
         if (size <= 0) return "0 B";
         final String[] units = new String[]{"B", "KB", "MB", "GB", "TB"};
         int digitGroups = (int) (Math.log10(size) / Math.log10(1024));
-        return new DecimalFormat("#,##0.#").format(size / Math.pow(1024, digitGroups)) + "" + units[digitGroups];
+        return new DecimalFormat("#,##0.#").format(size / Math.pow(1024, digitGroups)) + units[digitGroups];
     }
 
-    private String truncate(String str, int width) {
-        if (str.length() > width) {
-            return str.substring(0, width);
+    private String truncate(String str) {
+        if (str.length() > 11) {
+            return str.substring(0, 11);
         }
         return str;
     }
