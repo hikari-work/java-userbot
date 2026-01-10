@@ -43,6 +43,10 @@ public class ListMessage {
         String link = param.get("from");
         String prefix = param.getOrDefault("prefix", "");
         String suffix = param.getOrDefault("suffix", "");
+        if ("true".equals(suffix) && param.containsKey("e")) {
+            suffix = "-e";
+            param.remove("e");
+        }
 
         int count = 1;
         try {

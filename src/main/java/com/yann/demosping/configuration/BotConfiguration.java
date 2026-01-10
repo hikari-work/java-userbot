@@ -2,6 +2,8 @@ package com.yann.demosping.configuration;
 
 import com.yann.demosping.bot.manager.CallbackDispatcher;
 import com.yann.demosping.bot.manager.InlineBotDispatcher;
+import it.tdlight.Log;
+import it.tdlight.Slf4JLogMessageHandler;
 import it.tdlight.client.*;
 import it.tdlight.jni.TdApi;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +32,7 @@ public class BotConfiguration {
     @Bean("bot")
     public TDLibSettings settings() {
         APIToken token = new APIToken(apiId, apiHash);
+        Log.setLogMessageHandler(1, new Slf4JLogMessageHandler());
         TDLibSettings settings = TDLibSettings.create(token);
         Path path = Paths.get("tdlib-bot");
         settings.setDatabaseDirectoryPath(path.resolve("bot-data"));
