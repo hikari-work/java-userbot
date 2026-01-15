@@ -4,7 +4,7 @@ import com.yann.demosping.annotations.UserBotCommand;
 import com.yann.demosping.configuration.GlobalTelegramExceptionHandler;
 import com.yann.demosping.service.ModuleStateService;
 import com.yann.demosping.utils.ArgsParser;
-import com.yann.demosping.utils.EditMessageUtils;
+import com.yann.demosping.service.EditMessage;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -16,7 +16,7 @@ import java.util.Map;
 public class Afk {
 
     private final ModuleStateService moduleStateService;
-    private final EditMessageUtils editMessageUtils;
+    private final EditMessage editMessage;
     private final GlobalTelegramExceptionHandler globalTelegramExceptionHandler;
 
     @UserBotCommand(commands = {"afk"}, description = """
@@ -39,7 +39,7 @@ public class Afk {
         }
 
         moduleStateService.setAfk(true, reason);
-        editMessageUtils.editMessage(chatId, messageId, "Memulai AFK Mode Karena <code>" + reason + "</code>")
+        editMessage.editMessage(chatId, messageId, "Memulai AFK Mode Karena <code>" + reason + "</code>")
                         .exceptionally(ex -> {
                             globalTelegramExceptionHandler.handle(ex);
                             return null;

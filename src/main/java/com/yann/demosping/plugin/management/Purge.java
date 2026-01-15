@@ -2,7 +2,7 @@ package com.yann.demosping.plugin.management;
 
 import com.yann.demosping.annotations.UserBotCommand;
 import com.yann.demosping.configuration.GlobalTelegramExceptionHandler;
-import com.yann.demosping.utils.SendMessageUtils;
+import com.yann.demosping.service.SendMessageUtils;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.extern.slf4j.Slf4j;

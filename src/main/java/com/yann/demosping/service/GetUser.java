@@ -1,15 +1,18 @@
-package com.yann.demosping.utils;
+package com.yann.demosping.service;
 
-import io.netty.util.concurrent.CompleteFuture;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.CompletableFuture;
 
 @Component
 public class GetUser {
+
+    @Value("${bot.token}")
+    private String botToken;
 
     private final SimpleTelegramClient client;
     public GetUser(@Qualifier("userBotClient") SimpleTelegramClient client) {
@@ -25,6 +28,13 @@ public class GetUser {
                 }
         );
         return future;
-
+    }
+    public CompletableFuture<TdApi.User> getBotUser() {
+        CompletableFuture<TdApi.User> future = new CompletableFuture<>();
+        client.send(new TdApi.GetUser(Long.parseLong(botToken.split(":")[0])), user -> {
+            if (user.isError()) future.completeExceptionally(new RuntimeException(user.getError().message));
+            else future.complete(user.get());
+        });
+        return future;
     }
 }

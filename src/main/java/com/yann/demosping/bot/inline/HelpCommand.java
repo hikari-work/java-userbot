@@ -30,7 +30,10 @@ public class HelpCommand {
         );
     }
     private TdApi.InputInlineQueryResultArticle createArticle(
-            String id, String title, String description, String content) {
+            String id,
+            String title,
+            String description,
+            String content) {
         TdApi.FormattedText formattedText = new TdApi.FormattedText(
                 content,
                 new TdApi.TextEntity[0]

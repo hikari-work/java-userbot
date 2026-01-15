@@ -5,10 +5,9 @@ import com.yann.demosping.configuration.GlobalTelegramExceptionHandler;
 import com.yann.demosping.manager.CommandContainer;
 import com.yann.demosping.manager.CommandRegistry;
 import com.yann.demosping.utils.ArgsParser;
-import com.yann.demosping.utils.SendMessageUtils;
+import com.yann.demosping.service.SendMessageUtils;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
-import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 

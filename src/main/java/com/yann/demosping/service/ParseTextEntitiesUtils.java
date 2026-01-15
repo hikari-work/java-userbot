@@ -1,4 +1,4 @@
-package com.yann.demosping.utils;
+package com.yann.demosping.service;
 
 import com.yann.demosping.exceptions.FormatTextNotValidException;
 import it.tdlight.client.SimpleTelegramClient;

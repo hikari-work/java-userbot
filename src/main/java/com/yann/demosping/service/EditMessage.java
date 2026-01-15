@@ -1,4 +1,4 @@
-package com.yann.demosping.utils;
+package com.yann.demosping.service;
 
 import com.yann.demosping.exceptions.SendMessageNotCompleteException;
 import it.tdlight.client.SimpleTelegramClient;
@@ -11,12 +11,12 @@ import java.util.concurrent.CompletableFuture;
 
 @Slf4j
 @Component
-public class EditMessageUtils {
+public class EditMessage {
 
     private final SimpleTelegramClient client;
     private final ParseTextEntitiesUtils parseTextEntitiesUtils;
 
-    public EditMessageUtils(@Qualifier("userBotClient") SimpleTelegramClient client, ParseTextEntitiesUtils parseTextEntitiesUtils) {
+    public EditMessage(@Qualifier("userBotClient") SimpleTelegramClient client, ParseTextEntitiesUtils parseTextEntitiesUtils) {
         this.client = client;
         this.parseTextEntitiesUtils = parseTextEntitiesUtils;
     }
@@ -37,6 +37,22 @@ public class EditMessageUtils {
                     messageFuture.complete(send.get());
                 }
         ));
+        return messageFuture;
+    }
+    public CompletableFuture<TdApi.Message> editMessage(long chatId, long messageId, TdApi.InputMessageContent content, TdApi.ReplyMarkup replyMarkup) {
+        CompletableFuture<TdApi.Message> messageFuture = new CompletableFuture<>();
+        client.send(
+                new TdApi.EditMessageText(chatId, messageId, replyMarkup, content), send -> {
+                    if (send.isError()) {
+                        TdApi.Error error = send.getError();
+                        if (error.code == 429) {
+                            messageFuture.completeExceptionally(new SendMessageNotCompleteException("Error Flood Wait", chatId, messageId));
+                        }
+                        messageFuture.completeExceptionally(new SendMessageNotCompleteException("Error : " + error.message, chatId, messageId));
+                    }
+                    messageFuture.complete(send.get());
+                }
+        );
         return messageFuture;
     }
 }

@@ -1,4 +1,4 @@
-package com.yann.demosping.utils;
+package com.yann.demosping.service;
 
 import com.yann.demosping.exceptions.GetMessageException;
 import it.tdlight.client.SimpleTelegramClient;
@@ -9,11 +9,11 @@ import org.springframework.stereotype.Component;
 import java.util.concurrent.CompletableFuture;
 
 @Component
-public class MessageUtils {
+public class MessagesService {
 
     private final SimpleTelegramClient client;
 
-    public MessageUtils(@Qualifier("userBotClient") SimpleTelegramClient client) {
+    public MessagesService(@Qualifier("userBotClient") SimpleTelegramClient client) {
         this.client = client;
     }
 

@@ -1,4 +1,4 @@
-package com.yann.demosping.utils;
+package com.yann.demosping.service;
 
 import com.yann.demosping.exceptions.SendMessageNotCompleteException;
 import it.tdlight.client.SimpleTelegramClient;
@@ -54,5 +54,59 @@ public class SendMessageUtils {
                 }
         ));
         return messageFuture;
+    }
+    public CompletableFuture<TdApi.Message> sendInlineQueryResult(long chatId, long replyToMessageId, long queryId, String resultId) {
+        CompletableFuture<TdApi.Message> future = new CompletableFuture<>();
+
+        TdApi.InputMessageReplyToMessage replyTo = null;
+        if (replyToMessageId != 0) {
+            replyTo = new TdApi.InputMessageReplyToMessage(replyToMessageId, null, 0);
+        }
+
+        TdApi.SendInlineQueryResultMessage request = new TdApi.SendInlineQueryResultMessage();
+        request.chatId = chatId;
+        request.messageThreadId = 0;
+        request.replyTo = replyTo;
+        request.options = null;
+
+        request.queryId = queryId;
+        request.resultId = resultId;
+
+        request.hideViaBot = false;
+
+        client.send(request, result -> {
+            if (result.isError()) {
+                future.completeExceptionally(new RuntimeException("Error " + result.getError().code + ": " + result.getError().message));
+            } else {
+                future.complete(result.get());
+            }
+        });
+
+        return future;
+    }
+    public CompletableFuture<TdApi.Message> sendMessage(long chatId, long replyToMessageId,
+                                                        String text, TdApi.ReplyMarkup replyMarkup) {
+        TdApi.InputMessageText inputMessage = new TdApi.InputMessageText();
+        inputMessage.text = new TdApi.FormattedText(text, new TdApi.TextEntity[0]);
+
+        TdApi.SendMessage sendMessage = new TdApi.SendMessage();
+        sendMessage.chatId = chatId;
+        sendMessage.inputMessageContent = inputMessage;
+        sendMessage.replyMarkup = replyMarkup;
+
+        if (replyToMessageId != 0) {
+            sendMessage.replyTo = new TdApi.InputMessageReplyToMessage(replyToMessageId, null, 0);
+        }
+
+        CompletableFuture<TdApi.Message> future = new CompletableFuture<>();
+        client.send(sendMessage, result -> {
+            if (result.isError()) {
+                future.completeExceptionally(new RuntimeException(result.getError().message));
+            } else {
+                future.complete(result.get());
+            }
+        });
+
+        return future;
     }
 }

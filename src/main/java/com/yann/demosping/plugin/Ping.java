@@ -1,7 +1,7 @@
 package com.yann.demosping.plugin;
 
 import com.yann.demosping.annotations.UserBotCommand;
-import com.yann.demosping.utils.EditMessageUtils;
+import com.yann.demosping.service.EditMessage;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.extern.slf4j.Slf4j;
@@ -16,14 +16,14 @@ import java.lang.management.*;
 @Component
 public class Ping {
 
-    private final EditMessageUtils editMessageUtils;
+    private final EditMessage editMessage;
     @Value("${user.id}")
     private Long userId;
 
     private final SimpleTelegramClient client;
 
-    public Ping(EditMessageUtils editMessageUtils, @Qualifier("userBotClient") SimpleTelegramClient client) {
-        this.editMessageUtils = editMessageUtils;
+    public Ping(EditMessage editMessage, @Qualifier("userBotClient") SimpleTelegramClient client) {
+        this.editMessage = editMessage;
         this.client = client;
     }
 
@@ -40,12 +40,12 @@ public class Ping {
         try {
             String initialText = "<i>Pinging..</i>";
 
-            editMessageUtils.editMessage(chatId, messageId, initialText)
+            editMessage.editMessage(chatId, messageId, initialText)
                     .thenAccept(message -> {
                         long totalTime = (System.currentTimeMillis() - startTime) / 4;
                         String finalStats = getRuntimeInformation(totalTime);
 
-                        editMessageUtils.editMessage(chatId, messageId, finalStats)
+                        editMessage.editMessage(chatId, messageId, finalStats)
                                 .exceptionally(error -> {
                                     log.error("Failed to edit final stats: {}", error.getMessage());
                                     return null;
@@ -58,7 +58,7 @@ public class Ping {
 
         } catch (Exception e) {
             log.error("Error in ping handler: {}", e.getMessage(), e);
-            editMessageUtils.editMessage(chatId, messageId, "❌ Error: " + e.getMessage())
+            editMessage.editMessage(chatId, messageId, "❌ Error: " + e.getMessage())
                     .exceptionally(error -> {
                         log.error("Failed to edit error message: {}", error.getMessage());
                         return null;

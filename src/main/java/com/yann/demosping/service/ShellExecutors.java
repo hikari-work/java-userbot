@@ -34,10 +34,10 @@ public class ShellExecutors {
                     }
                 }
 
-                boolean finished = process.waitFor(30, TimeUnit.SECONDS);
+                boolean finished = process.waitFor(2, TimeUnit.SECONDS);
                 if (!finished) {
                     process.destroyForcibly();
-                    return "Error: Command timed out (30s).";
+                    return "Error: Command timed out (2s).";
                 }
 
             } catch (Exception e) {

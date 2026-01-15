@@ -9,7 +9,6 @@ import it.tdlight.jni.TdApi;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -55,10 +54,7 @@ public class BotConfiguration {
 
         log.info("Bot Building");
 
-        builder.addUpdateHandler(TdApi.UpdateNewInlineQuery.class, query -> {
-            log.info("Inline Query received: {}", query.query);
-            inlineBotDispatcher.dispatch(query);
-        });
+        builder.addUpdateHandler(TdApi.UpdateNewInlineQuery.class, inlineBotDispatcher::dispatch);
 
         builder.addUpdateHandler(TdApi.UpdateNewCallbackQuery.class, query -> {
             log.info("=== CALLBACK QUERY RECEIVED ===");

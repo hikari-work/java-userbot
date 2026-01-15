@@ -1,11 +1,11 @@
-package com.yann.demosping.utils;
+package com.yann.demosping.service;
 
 import it.tdlight.jni.TdApi;
 import org.springframework.stereotype.Component;
 
 
 @Component
-public class CopyMessageUtils {
+public class CopyMessage {
 
     public TdApi.InputMessageContent convertToInput(TdApi.MessageContent content) {
         switch (content) {

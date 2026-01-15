@@ -3,7 +3,7 @@ package com.yann.demosping.interceptor;
 
 import com.yann.demosping.manager.BotInterceptor;
 import com.yann.demosping.service.ModuleStateService;
-import com.yann.demosping.utils.CopyMessageUtils;
+import com.yann.demosping.service.CopyMessage;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -20,14 +20,14 @@ public class FilterInterceptor implements BotInterceptor {
     private final ModuleStateService stateService;
 
     private final SimpleTelegramClient client;
-    private final CopyMessageUtils copyMessageUtils;
+    private final CopyMessage copyMessage;
 
     public FilterInterceptor(ModuleStateService stateService,
                              @Qualifier("userBotClient") SimpleTelegramClient client,
-                             CopyMessageUtils copyMessageUtils) {
+                             CopyMessage copyMessage) {
         this.stateService = stateService;
         this.client = client;
-        this.copyMessageUtils = copyMessageUtils;
+        this.copyMessage = copyMessage;
     }
 
     @Override
@@ -71,7 +71,7 @@ public class FilterInterceptor implements BotInterceptor {
                     if (messageresult.isError()) {
                         return;
                     }
-                    TdApi.InputMessageContent inputMessageContent = copyMessageUtils.convertToInput(messageresult.get().content);
+                    TdApi.InputMessageContent inputMessageContent = copyMessage.convertToInput(messageresult.get().content);
                     if (inputMessageContent != null) {
                         client.send(
                                 new TdApi.SendMessage(

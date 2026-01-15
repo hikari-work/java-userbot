@@ -1,8 +1,8 @@
 package com.yann.demosping.configuration;
 
 import com.yann.demosping.exceptions.*;
-import com.yann.demosping.utils.EditMessageUtils;
-import com.yann.demosping.utils.SendMessageUtils;
+import com.yann.demosping.service.EditMessage;
+import com.yann.demosping.service.SendMessageUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class GlobalTelegramExceptionHandler {
 
-    public final EditMessageUtils editMessageUtils;
+    public final EditMessage editMessage;
     private final SendMessageUtils sendMessageUtils;
 
     public void handle(Throwable throwable) {
@@ -36,7 +36,7 @@ public class GlobalTelegramExceptionHandler {
     private void handleTextFormatMessageException(TelegramException ex) {
         if (ex.getChatId() != null && ex.getMessageId() != null) {
             String errorMessage = "Format text not valid " + ex.getMessage();
-            editMessageUtils.editMessage(ex.getChatId(), ex.getMessageId(), errorMessage)
+            editMessage.editMessage(ex.getChatId(), ex.getMessageId(), errorMessage)
                     .exceptionally(editError -> {
                         log.error("Failed Edit Messae {}", editError.getMessage());
                         return null;
@@ -47,7 +47,7 @@ public class GlobalTelegramExceptionHandler {
         if (ex.getChatId() != null && ex.getMessageId() != null) {
             String errorMessage = "❌ Gagal mengirim pesan!\n\n" + ex.getMessage();
 
-            editMessageUtils.editMessage(ex.getChatId(), ex.getMessageId(), errorMessage)
+            editMessage.editMessage(ex.getChatId(), ex.getMessageId(), errorMessage)
                     .exceptionally(editError -> {
                         sendMessageUtils.sendMessage(ex.getChatId(), 0, errorMessage);
                         return null;

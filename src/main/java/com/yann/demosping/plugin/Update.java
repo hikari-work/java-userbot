@@ -5,7 +5,7 @@ import com.yann.demosping.configuration.GlobalTelegramExceptionHandler;
 import it.tdlight.jni.TdApi;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import com.yann.demosping.utils.EditMessageUtils;
+import com.yann.demosping.service.EditMessage;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -16,13 +16,13 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 @Component
 public class Update {
-    private final EditMessageUtils editMessageUtils;
+    private final EditMessage editMessage;
 
     private final GlobalTelegramExceptionHandler globalTelegramExceptionHandler;
 
-    public Update(EditMessageUtils editMessageUtils,
+    public Update(EditMessage editMessage,
                   GlobalTelegramExceptionHandler globalTelegramExceptionHandler) {
-        this.editMessageUtils = editMessageUtils;
+        this.editMessage = editMessage;
         this.globalTelegramExceptionHandler = globalTelegramExceptionHandler;
     }
 
@@ -89,7 +89,7 @@ public class Update {
     }
 
     public void sendMessage(Long chatId, Long messageId, String text) {
-        editMessageUtils.editMessage(chatId, messageId, text).exceptionally(ex -> {
+        editMessage.editMessage(chatId, messageId, text).exceptionally(ex -> {
             globalTelegramExceptionHandler.handle(ex);
             return null;
         });

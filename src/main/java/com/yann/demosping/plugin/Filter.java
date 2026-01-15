@@ -5,7 +5,7 @@ import com.yann.demosping.configuration.GlobalTelegramExceptionHandler;
 import com.yann.demosping.manager.CommandRegistry;
 import com.yann.demosping.service.ModuleStateService;
 import com.yann.demosping.utils.ArgsParser;
-import com.yann.demosping.utils.EditMessageUtils;
+import com.yann.demosping.service.EditMessage;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,7 +20,7 @@ public class Filter {
 
     private final ModuleStateService moduleStateService;
     private final CommandRegistry commandRegistry;
-    private final EditMessageUtils editMessageUtils;
+    private final EditMessage editMessage;
     private final GlobalTelegramExceptionHandler globalTelegramExceptionHandler;
 
     @UserBotCommand(commands = {"filter", "filters"}, description = "", sudoOnly = true)
@@ -62,7 +62,7 @@ public class Filter {
             if (sourceChatId == 0) sourceChatId = currentChatId;
             String savedValue = sourceChatId + ":" + sourceMsgId;
             moduleStateService.saveFilter(sourceChatId, filterTrigger, savedValue);
-            editMessageUtils.editMessage(currentChatId, message.message.id, "<i>Trigger </i><code>\" + filterTrigger +\"</code><i> sudah di set</i>")
+            editMessage.editMessage(currentChatId, message.message.id, "<i>Trigger </i><code>\" + filterTrigger +\"</code><i> sudah di set</i>")
                             .exceptionally(ex -> {
                                 globalTelegramExceptionHandler.handle(ex);
                                 return null;
@@ -79,7 +79,7 @@ public class Filter {
         Map<Object, Object> allFilters = moduleStateService.getAllFilters(chatId);
         if (allFilters.containsKey(args.trim().toLowerCase())) {
             moduleStateService.deleteFilter(chatId, args.toLowerCase());
-            editMessageUtils.editMessage(chatId, messageId, "DONE").exceptionally(ex -> {
+            editMessage.editMessage(chatId, messageId, "DONE").exceptionally(ex -> {
                 globalTelegramExceptionHandler.handle(ex);
                 return null;
             });
@@ -94,7 +94,7 @@ public class Filter {
         long messageId = message.message.id;
         Map<Object, Object> allFilters = moduleStateService.getAllFilters(chatId);
         if (allFilters == null ||allFilters.isEmpty()) {
-            editMessageUtils.editMessage(chatId, messageId, "Empty Filter").exceptionally(ex -> {
+            editMessage.editMessage(chatId, messageId, "Empty Filter").exceptionally(ex -> {
                 globalTelegramExceptionHandler.handle(ex);
                 return null;
             });
@@ -105,7 +105,7 @@ public class Filter {
 
     private void sendDescription(Long chatId, Long messageId) {
         String text = commandRegistry.getCommand("addfilter").command().description();
-        editMessageUtils.editMessage(chatId, messageId, text).exceptionally(ex -> {
+        editMessage.editMessage(chatId, messageId, text).exceptionally(ex -> {
             globalTelegramExceptionHandler.handle(ex);
             return null;
         });
@@ -115,7 +115,7 @@ public class Filter {
         for (Map.Entry<Object, Object> map : filters.entrySet()) {
             sb.append("<code>").append(map.getKey().toString()).append("</code>\n");
         }
-        editMessageUtils.editMessage(chatId, messageId, sb.toString()).exceptionally(ex -> {
+        editMessage.editMessage(chatId, messageId, sb.toString()).exceptionally(ex -> {
             globalTelegramExceptionHandler.handle(ex);
             return null;
         });

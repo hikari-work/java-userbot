@@ -5,11 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature; // Tambahan untuk pretty print
 import com.yann.demosping.annotations.UserBotCommand;
 import com.yann.demosping.configuration.GlobalTelegramExceptionHandler;
-import com.yann.demosping.utils.ChatUtils;
-import com.yann.demosping.utils.EditMessageUtils;
-import com.yann.demosping.utils.MessageUtils;
-import com.yann.demosping.utils.SendMessageUtils;
-import it.tdlight.client.SimpleTelegramClient;
+import com.yann.demosping.service.ChatService;
+import com.yann.demosping.service.EditMessage;
+import com.yann.demosping.service.MessagesService;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -19,9 +17,9 @@ import org.springframework.stereotype.Component;
 public class Json {
 
     private final ObjectMapper mapper = new ObjectMapper();
-    private final MessageUtils messageUtils;
-    private final EditMessageUtils editMessageUtils;
-    private final ChatUtils chatUtils;
+    private final MessagesService messagesService;
+    private final EditMessage editMessage;
+    private final ChatService chatService;
     private final GlobalTelegramExceptionHandler globalTelegramExceptionHandler;
 
     private static final int MAX_TELEGRAM_LENGTH = 4000;
@@ -38,21 +36,21 @@ public class Json {
         mapper.enable(SerializationFeature.INDENT_OUTPUT);
 
         if (update.message.replyTo instanceof TdApi.MessageReplyToMessage replyTo) {
-            messageUtils.getMessage(chatId, replyTo.messageId, messageId).thenAcceptAsync(message -> {
+            messagesService.getMessage(chatId, replyTo.messageId, messageId).thenAcceptAsync(message -> {
                 String jsonString = getInfo(message);
                 String safeText = truncateSafe(jsonString);
 
-                editMessageUtils.editMessage(chatId, messageId, "<blockquote expandable>" + safeText + "</blockquote>");
+                editMessage.editMessage(chatId, messageId, "<blockquote expandable>" + safeText + "</blockquote>");
             }).exceptionally(ex -> {
                 globalTelegramExceptionHandler.handle(ex);
                 return null;
             });
         } else {
-            chatUtils.getChatInfo(chatId).thenAcceptAsync(chatInfo -> {
+            chatService.getChatInfo(chatId).thenAcceptAsync(chatInfo -> {
                 String jsonString = getInfo(chatInfo);
                 String safeText = truncateSafe(jsonString);
 
-                editMessageUtils.editMessage(chatId, messageId, "<blockquote expandable>" + safeText + "</blockquote>");
+                editMessage.editMessage(chatId, messageId, "<blockquote expandable>" + safeText + "</blockquote>");
             }).exceptionally(ex -> {
                 globalTelegramExceptionHandler.handle(ex);
                 return null;

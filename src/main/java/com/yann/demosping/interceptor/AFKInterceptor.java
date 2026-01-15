@@ -3,7 +3,7 @@ package com.yann.demosping.interceptor;
 import com.yann.demosping.configuration.GlobalTelegramExceptionHandler;
 import com.yann.demosping.manager.BotInterceptor;
 import com.yann.demosping.service.ModuleStateService;
-import com.yann.demosping.utils.SendMessageUtils;
+import com.yann.demosping.service.SendMessageUtils;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
