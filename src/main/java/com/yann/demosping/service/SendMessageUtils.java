@@ -109,4 +109,28 @@ public class SendMessageUtils {
 
         return future;
     }
+    public CompletableFuture<TdApi.Message> sendMessage(long chatId, TdApi.InputMessageContent content) {
+        CompletableFuture<TdApi.Message> future = new CompletableFuture<>();
+        client.send(new TdApi.SendMessage(chatId, 0, null, null, null, content), result -> {
+            if (result.isError()) {
+                future.completeExceptionally(new RuntimeException(result.getError().message));
+            } else {
+                future.complete(result.get());
+            }
+        });
+        return future;
+    }
+    public CompletableFuture<TdApi.Message> sendMessage(long chatId, TdApi.FormattedText content) {
+        CompletableFuture<TdApi.Message> future = new CompletableFuture<>();
+        client.send(
+                new TdApi.SendMessage(chatId, 0, null, null, null, new TdApi.InputMessageText(content, new TdApi.LinkPreviewOptions(), false)), result -> {
+                    if (result.isError()) {
+                        future.completeExceptionally(new RuntimeException(result.getError().message));
+                    } else {
+                        future.complete(result.get());
+                    }
+                }
+        );
+        return future;
+    }
 }
