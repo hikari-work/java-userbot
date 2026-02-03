@@ -31,7 +31,7 @@ pkill -f $JAR_NAME
 if [ -f "target/$JAR_NAME" ]; then
     echo "Starting new bot..."
     if [ -x "$JAVA_CMD" ]; then
-        setsid $JAVA_CMD -XX:+UseG1GC -Xmx96m -Xms32m -Xss256k -XX:MaxMetaspaceSize=64m -jar target/$JAR_NAME > bot_runtime.log 2>&1 &
+        setsid $JAVA_CMD -XX:+UseG1GC -Xmx96m -Xms32m -Xss256k -XX:MaxMetaspaceSize=78m -jar target/$JAR_NAME > bot_runtime.log 2>&1 &
         echo "New bot launched."
     else
         echo "CRITICAL: Java command not found at $JAVA_CMD"
