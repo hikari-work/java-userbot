@@ -29,12 +29,4 @@ public class GetUser {
         );
         return future;
     }
-    public CompletableFuture<TdApi.User> getBotUser() {
-        CompletableFuture<TdApi.User> future = new CompletableFuture<>();
-        client.send(new TdApi.GetUser(Long.parseLong(botToken.split(":")[0])), user -> {
-            if (user.isError()) future.completeExceptionally(new RuntimeException(user.getError().message));
-            else future.complete(user.get());
-        });
-        return future;
-    }
 }
