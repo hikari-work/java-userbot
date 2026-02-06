@@ -40,7 +40,7 @@ public class Json {
                 String jsonString = getInfo(message);
                 String safeText = truncateSafe(jsonString);
 
-                editMessage.editMessage(chatId, messageId, "<blockquote expandable>" + safeText + "</blockquote>");
+                editMessage.editMessage(chatId, messageId, "<code>" + safeText + "</code>");
             }).exceptionally(ex -> {
                 globalTelegramExceptionHandler.handle(ex);
                 return null;
@@ -50,7 +50,7 @@ public class Json {
                 String jsonString = getInfo(chatInfo);
                 String safeText = truncateSafe(jsonString);
 
-                editMessage.editMessage(chatId, messageId, "<blockquote expandable>" + safeText + "</blockquote>");
+                editMessage.editMessage(chatId, messageId, "<code>" + safeText + "</code>");
             }).exceptionally(ex -> {
                 globalTelegramExceptionHandler.handle(ex);
                 return null;
@@ -69,6 +69,7 @@ public class Json {
 
     public String getInfo(Object object) {
         try {
+            mapper.enable(SerializationFeature.INDENT_OUTPUT);
             return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(object);
         } catch (JsonProcessingException err) {
             return "Error parsing JSON: " + err.getMessage();

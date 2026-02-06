@@ -57,11 +57,6 @@ public class BotConfiguration {
         builder.addUpdateHandler(TdApi.UpdateNewInlineQuery.class, inlineBotDispatcher::dispatch);
 
         builder.addUpdateHandler(TdApi.UpdateNewCallbackQuery.class, query -> {
-            log.info("=== CALLBACK QUERY RECEIVED ===");
-            log.info("Query ID: {}", query.id);
-            log.info("Sender User ID: {}", query.senderUserId);
-            log.info("Chat ID: {}", query.chatId);
-            log.info("Message ID: {}", query.messageId);
 
             if (query.payload instanceof TdApi.CallbackQueryPayloadData) {
                 byte[] data = ((TdApi.CallbackQueryPayloadData) query.payload).data;
