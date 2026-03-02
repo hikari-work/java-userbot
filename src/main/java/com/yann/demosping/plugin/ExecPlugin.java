@@ -17,24 +17,29 @@ public class ExecPlugin {
     private final EditMessage editMessage;
     private final SendMessageUtils sendMessageUtils;
     private final OutputPaste outputPaste;
+    private final ParseTextEntitiesUtils parseTextEntitiesUtils;
 
     public ExecPlugin(ShellExecutors shellExecutors, EditMessage editMessage,
-                      SendMessageUtils sendMessageUtils, OutputPaste outputPaste) {
+                      SendMessageUtils sendMessageUtils, OutputPaste outputPaste, ParseTextEntitiesUtils parseTextEntitiesUtils) {
         this.shellExecutors = shellExecutors;
         this.editMessage = editMessage;
         this.sendMessageUtils = sendMessageUtils;
         this.outputPaste = outputPaste;
+        this.parseTextEntitiesUtils = parseTextEntitiesUtils;
     }
 
-    @UserBotCommand(commands = "exec", description = "Execute shell command", sudoOnly = true)
+    @UserBotCommand(commands = "e", description = "Execute shell command", sudoOnly = true)
     public void exec(TdApi.UpdateNewMessage message, String args) {
         long chatId = message.message.chatId;
-        long replyToMessageId = message.message.id;
 
-        String placeholderText = "<b>Input:</b>\n<pre>" + args + "</pre>\n\n" +
+        sendMessageUtils.deleteMessage(chatId, message.message.id);
+
+        String escapedArgs = escapeHtml(args);
+
+        String placeholderText = "<b>Input:</b>\n<pre>" + escapedArgs + "</pre>\n\n" +
                 "<b>Status:</b>\n<i>⏳ Executing command...</i>";
 
-        sendMessageUtils.sendMessage(chatId, replyToMessageId, placeholderText)
+        sendMessageUtils.sendMessage(chatId, 0, placeholderText)
                 .thenCompose(sentMsg -> {
                     if (sentMsg == null) {
                         log.error("Failed to send placeholder message");
@@ -47,11 +52,8 @@ public class ExecPlugin {
                             CompletableFuture.delayedExecutor(500, TimeUnit.MILLISECONDS));
                 })
                 .thenCompose(sentMsg -> {
-                    if (sentMsg == null) {
-                        return CompletableFuture.completedFuture(null);
-                    }
+                    if (sentMsg == null) return CompletableFuture.completedFuture(null);
 
-                    // Eksekusi command
                     return shellExecutors.execute(args)
                             .thenCompose(result -> {
                                 log.info("Command executed, uploading to paste...");
@@ -66,61 +68,45 @@ public class ExecPlugin {
                             });
                 })
                 .thenCompose(data -> {
-                    if (data == null) {
-                        return CompletableFuture.completedFuture(null);
-                    }
+                    if (data == null) return CompletableFuture.completedFuture(null);
 
                     String output = (String) data[0];
-                    String pasteUrl = (String) data[1];
                     TdApi.Message sentMsg = (TdApi.Message) data[2];
+                    log.info("Output uploaded, editing message... {}", sentMsg.id);
 
                     String safeResult = output.length() > 2000 ?
                             output.substring(0, 2000) + "... (truncated)" : output;
 
-                    String finalText = "<b>Input:</b>\n<pre>" + args + "</pre>\n\n" +
-                            "<b>Output:</b>\n<pre>" + safeResult + "</pre>";
+                    String escapedResult = escapeHtml(safeResult);
 
-                    TdApi.InputMessageText finalMessage = new TdApi.InputMessageText();
-                    finalMessage.text = new TdApi.FormattedText(finalText, new TdApi.TextEntity[0]);
+                    String finalText = "<b>Input:</b>\n<pre>" + escapedArgs + "</pre>\n\n" +
+                            "<b>Output:</b>\n<pre>" + escapedResult + "</pre>";
 
-                    TdApi.ReplyMarkupInlineKeyboard replyMarkup;
-                    if (pasteUrl != null && !pasteUrl.isEmpty()) {
-                        replyMarkup = new TdApi.ReplyMarkupInlineKeyboard(
-                                new TdApi.InlineKeyboardButton[][]{
-                                        {
-                                                new TdApi.InlineKeyboardButton(
-                                                        "📄 Full Output",
-                                                        new TdApi.InlineKeyboardButtonTypeUrl(pasteUrl)
-                                                )
-                                        }
-                                }
-                        );
-                    } else {
-                        replyMarkup = null;
-                    }
-
-                    log.info("Editing message: chatId={}, messageId={}", chatId, sentMsg.id);
-
-                    return editMessage.editMessage(chatId, sentMsg.id, finalMessage, replyMarkup)
-                            .exceptionally(editEx -> {
-                                log.error("Failed to edit message, sending new one instead", editEx);
-
-                                sendMessageUtils.sendMessage(chatId, sentMsg.id, finalText, replyMarkup)
-                                        .exceptionally(sendEx -> {
-                                            log.error("Failed to send fallback message", sendEx);
-                                            return null;
-                                        });
-
-                                return null;
-                            });
+                    return parseTextEntitiesUtils.formatText(finalText, new TdApi.TextParseModeHTML())
+                            .thenCompose(formattedText -> CompletableFuture.supplyAsync(
+                                    () -> formattedText,
+                                    CompletableFuture.delayedExecutor(500, TimeUnit.MILLISECONDS)
+                            ))
+                            .thenCompose(text -> editMessage.editMessage(
+                                    chatId,
+                                    sentMsg.id,
+                                    new TdApi.InputMessageText(text, null, false),
+                                    null
+                            ).exceptionally(
+                                    ex -> {
+                                        log.error("Failed to edit message", ex);
+                                        return null;
+                                    }
+                            ));
                 })
                 .exceptionally(ex -> {
                     log.error("Error executing command", ex);
-                    
-                    String errorText = "<b>Input:</b>\n<pre>" + args + "</pre>\n\n" +
-                            "<b>Error:</b>\n<pre>" + ex.getMessage() + "</pre>";
 
-                    sendMessageUtils.sendMessage(chatId, replyToMessageId, errorText)
+                    String escapedError = escapeHtml(ex.getMessage());
+                    String errorText = "<b>Input:</b>\n<pre>" + escapedArgs + "</pre>\n\n" +
+                            "<b>Error:</b>\n<pre>" + escapedError + "</pre>";
+
+                    sendMessageUtils.sendMessage(chatId, 0, errorText)
                             .exceptionally(sendEx -> {
                                 log.error("Failed to send error message", sendEx);
                                 return null;
@@ -128,5 +114,11 @@ public class ExecPlugin {
 
                     return null;
                 });
+    }
+    private String escapeHtml(String text) {
+        if (text == null) return "";
+        return text.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;");
     }
 }

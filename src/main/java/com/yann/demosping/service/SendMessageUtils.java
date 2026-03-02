@@ -104,4 +104,16 @@ public class SendMessageUtils {
         );
         return future;
     }
+    public void deleteMessage(long chatId, long messageId) {
+        CompletableFuture<Void> future = new CompletableFuture<>();
+        client.send(
+                new TdApi.DeleteMessages(chatId, new long[]{messageId}, true), result -> {
+                    if (result.isError()) {
+                        future.completeExceptionally(new RuntimeException(result.getError().message));
+                    } else {
+                        future.complete(null);
+                    }
+                }
+        );
+    }
 }

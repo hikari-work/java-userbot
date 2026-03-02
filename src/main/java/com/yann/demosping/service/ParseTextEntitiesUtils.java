@@ -22,19 +22,25 @@ public class ParseTextEntitiesUtils {
         client.send(
                 new TdApi.ParseTextEntities(text, parseMode), result -> {
                     if (result.isError()) {
-                        textFuture.completeExceptionally(new FormatTextNotValidException("Text Not Valid", 0L,0L));
+                        // Tambahkan pesan error bawaan TDLib agar mudah dideteksi
+                        String errorMsg = result.getError() != null ? result.getError().message : "Unknown Error";
+                        textFuture.completeExceptionally(new FormatTextNotValidException("Text Not Valid: " + errorMsg, 0L,0L));
+                        return; // WAJIB ADA: Mencegah result.get() dipanggil saat terjadi error
                     }
                     textFuture.complete(result.get());
                 }
         );
         return textFuture;
     }
+
     public CompletableFuture<TdApi.FormattedText> formatText(String text) {
         CompletableFuture<TdApi.FormattedText> textFuture = new CompletableFuture<>();
         client.send(
                 new TdApi.ParseTextEntities(text, new TdApi.TextParseModeHTML()), result -> {
                     if (result.isError()) {
-                        textFuture.completeExceptionally(new FormatTextNotValidException("Text Not Valid", 0L,0L));
+                        String errorMsg = result.getError() != null ? result.getError().message : "Unknown Error";
+                        textFuture.completeExceptionally(new FormatTextNotValidException("Text Not Valid: " + errorMsg, 0L,0L));
+                        return;
                     }
                     textFuture.complete(result.get());
                 }

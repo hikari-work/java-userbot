@@ -31,10 +31,15 @@ public class EditMessage {
                         TdApi.Error error = send.getError();
                         if (error.code == 429) {
                             messageFuture.completeExceptionally(new SendMessageNotCompleteException("Error Flood Wait", chatId, messageId));
+                        } else if (error.code == 400 && error.message.toLowerCase().contains("message not found")) {
+                            log.warn("Message not found: chatId={}, messageId={}", chatId, messageId);
+                            messageFuture.complete(null);
+                        } else {
+                            messageFuture.completeExceptionally(new SendMessageNotCompleteException("Error : " + error.message, chatId, messageId, error));
                         }
-                        messageFuture.completeExceptionally(new SendMessageNotCompleteException("Error : " + error.message, chatId, messageId));
+                    } else {
+                        messageFuture.complete(send.get());
                     }
-                    messageFuture.complete(send.get());
                 }
         ));
         return messageFuture;
@@ -47,10 +52,15 @@ public class EditMessage {
                         TdApi.Error error = send.getError();
                         if (error.code == 429) {
                             messageFuture.completeExceptionally(new SendMessageNotCompleteException("Error Flood Wait", chatId, messageId));
+                        } else if (error.code == 400 && error.message.toLowerCase().contains("message not found")) {
+                            log.warn("Message not found: chatId={}, messageId={}", chatId, messageId);
+                            messageFuture.complete(null);
+                        } else {
+                            messageFuture.completeExceptionally(new SendMessageNotCompleteException("Error : " + error.message, chatId, messageId, error));
                         }
-                        messageFuture.completeExceptionally(new SendMessageNotCompleteException("Error : " + error.message, chatId, messageId));
+                    } else {
+                        messageFuture.complete(send.get());
                     }
-                    messageFuture.complete(send.get());
                 }
         );
         return messageFuture;
