@@ -8,9 +8,11 @@ import com.yann.demosping.configuration.GlobalTelegramExceptionHandler;
 import com.yann.demosping.service.ChatService;
 import com.yann.demosping.service.EditMessage;
 import com.yann.demosping.service.MessagesService;
+import com.yann.demosping.service.OutputPaste;
 import it.tdlight.jni.TdApi;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Mono;
 
 @Component
 @RequiredArgsConstructor
@@ -23,6 +25,7 @@ public class Json {
     private final GlobalTelegramExceptionHandler globalTelegramExceptionHandler;
 
     private static final int MAX_TELEGRAM_LENGTH = 4000;
+    private final OutputPaste outputPaste;
 
     @UserBotCommand(
             commands = {"json"},
@@ -49,8 +52,11 @@ public class Json {
             chatService.getChatInfo(chatId).thenAcceptAsync(chatInfo -> {
                 String jsonString = getInfo(chatInfo);
                 String safeText = truncateSafe(jsonString);
+                outputPaste.post(safeText)
+                        .doOnSubscribe(subscription -> editMessage.editMessage(chatId, messageId, "Pasting JSON to output paste service..."))
+                                .doOnSuccess(success -> editMessage.editMessage(chatId, messageId, "<code>" + safeText + "</code>"))
+                        .then();
 
-                editMessage.editMessage(chatId, messageId, "<code>" + safeText + "</code>");
             }).exceptionally(ex -> {
                 globalTelegramExceptionHandler.handle(ex);
                 return null;

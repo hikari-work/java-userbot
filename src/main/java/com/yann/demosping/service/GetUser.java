@@ -3,7 +3,6 @@ package com.yann.demosping.service;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.CompletableFuture;
@@ -11,8 +10,6 @@ import java.util.concurrent.CompletableFuture;
 @Component
 public class GetUser {
 
-    @Value("${bot.token}")
-    private String botToken;
 
     private final SimpleTelegramClient client;
     public GetUser(@Qualifier("userBotClient") SimpleTelegramClient client) {

@@ -58,6 +58,12 @@ public class UserBotConfiguration {
         return args -> {
             client.addUpdateHandler(TdApi.UpdateNewMessage.class, dispatcher::onUpdateMessage);
             client.addUpdateHandler(TdApi.UpdateNewCallbackQuery.class, callbackDispatcher::dispatch);
+            client.addUpdateHandler(TdApi.UpdateAuthorizationState.class, update -> {
+                TdApi.AuthorizationState authorizationState = update.authorizationState;
+                if (authorizationState instanceof TdApi.AuthorizationStateWaitTdlibParameters) {
+
+                }
+            });
         };
     }
 }

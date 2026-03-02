@@ -45,11 +45,7 @@ public class AFKInterceptor implements BotInterceptor {
         return true;
     }
     private boolean isMe(TdApi.UpdateNewMessage message) {
-        TdApi.Message messages = message.message;
-        if (messages.senderId instanceof TdApi.MessageSenderUser sender) {
-            return sender.userId == Long.parseLong(userId);
-        }
-        return false;
+        return message.message.isOutgoing;
     }
     private boolean isMentioned(TdApi.UpdateNewMessage message) {
         if (message.message.chatId > 0) return true;
@@ -63,6 +59,9 @@ public class AFKInterceptor implements BotInterceptor {
         return false;
     }
     private void disableAfk(TdApi.UpdateNewMessage message) {
+        if (!message.message.isOutgoing) {
+            return;
+        }
         long chatId = message.message.chatId;
         String sb = "<b>Kembali Online</b>\n" +
                 "Setelah AFK : <code>" + moduleStateService.getAfkDuration() + "</code>";
@@ -82,9 +81,9 @@ public class AFKInterceptor implements BotInterceptor {
         });
     }
     private boolean isAfkNotification(TdApi.UpdateNewMessage message) {
-        if (message.message.content instanceof TdApi.MessageText text) {
-            log.info(text.text.text);
-            return text.text.text.startsWith("User sedang AFK");
+        if (message.message.content instanceof TdApi.MessageText textContent) {
+            String text = textContent.text.text;
+            return text.contains("User sedang AFK") || text.contains("Kembali Online");
         }
         return false;
     }
