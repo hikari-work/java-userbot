@@ -60,6 +60,7 @@ public class Dispatcher {
                 CommandContainer container = commandRegistry.getCommand(trigger);
                 if (container != null) {
                     if (commandRegistry.getCommand(trigger).command().sudoOnly()) {
+
                         if (chatId == 0L && client.getMe().id != chatId) {
                             return;
                         }

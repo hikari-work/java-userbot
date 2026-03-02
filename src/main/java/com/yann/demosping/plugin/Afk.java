@@ -20,7 +20,7 @@ public class Afk {
     private final GlobalTelegramExceptionHandler globalTelegramExceptionHandler;
 
     @UserBotCommand(commands = {"afk"}, description = """
-            Fitur ini untuk setting AFK
+            Fitur ini untuk setting AFK saja
             """, sudoOnly = true)
     public void afk(TdApi.UpdateNewMessage message, String args) {
         long chatId = message.message.chatId;
