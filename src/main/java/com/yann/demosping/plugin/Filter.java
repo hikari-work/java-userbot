@@ -62,7 +62,7 @@ public class Filter {
             if (sourceChatId == 0) sourceChatId = currentChatId;
             String savedValue = sourceChatId + ":" + sourceMsgId;
             moduleStateService.saveFilter(sourceChatId, filterTrigger, savedValue);
-            editMessage.editMessage(currentChatId, message.message.id, "<i>Trigger </i><code>\" + filterTrigger +\"</code><i> sudah di set</i>")
+            editMessage.editMessage(currentChatId, message.message.id, "<i>Trigger </i><code>" + filterTrigger + "</code><i> has been set</i>")
                             .exceptionally(ex -> {
                                 globalTelegramExceptionHandler.handle(ex);
                                 return null;
@@ -111,7 +111,7 @@ public class Filter {
         });
     }
     private void sendListFilter(Map<Object, Object> filters, Long chatId, Long messageId) {
-        StringBuilder sb =  new StringBuilder("<b>List Known Filter In This Chat :\n");
+        StringBuilder sb = new StringBuilder("<b>List Known Filters In This Chat:</b>\n");
         for (Map.Entry<Object, Object> map : filters.entrySet()) {
             sb.append("<code>").append(map.getKey().toString()).append("</code>\n");
         }

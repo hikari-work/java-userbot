@@ -1,9 +1,8 @@
 package com.yann.demosping.interceptor;
 
-
-import com.yann.demosping.manager.BotInterceptor;
-import com.yann.demosping.service.ModuleStateService;
+import com.yann.demosping.manager.MessageInterceptor;
 import com.yann.demosping.service.CopyMessage;
+import com.yann.demosping.service.ModuleStateService;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -13,80 +12,89 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 import java.util.regex.Pattern;
 
+@Order(2)
 @Component
-@Order(0)
-public class FilterInterceptor implements BotInterceptor {
+public class FilterInterceptor implements MessageInterceptor {
 
-    private final ModuleStateService stateService;
-
+    private final ModuleStateService moduleStateService;
     private final SimpleTelegramClient client;
     private final CopyMessage copyMessage;
 
-    public FilterInterceptor(ModuleStateService stateService,
+    public FilterInterceptor(ModuleStateService moduleStateService,
                              @Qualifier("userBotClient") SimpleTelegramClient client,
                              CopyMessage copyMessage) {
-        this.stateService = stateService;
+        this.moduleStateService = moduleStateService;
         this.client = client;
         this.copyMessage = copyMessage;
     }
 
     @Override
-    public boolean preHandle(TdApi.UpdateNewMessage message, String args) {
+    public boolean preHandle(TdApi.UpdateNewMessage message, String text) {
+        if (message.message.isOutgoing) {
+            return true;
+        }
+
         long chatId = message.message.chatId;
-        String textMessage = null;
-        if (message.message.content instanceof TdApi.MessageVideo video) {
-            textMessage = video.caption.text;
-        } else if (message.message.content instanceof TdApi.MessagePhoto p) {
-            textMessage = p.caption.text;
-        } else if (message.message.content instanceof TdApi.MessageText text) {
-            textMessage = text.text.text;
-        }
-        if (textMessage == null || textMessage.isEmpty()) {
+        String messageText = extractText(message);
+        if (messageText == null || messageText.isBlank()) {
             return true;
         }
-        if (textMessage.contains("delfilter")) {
+
+        Map<Object, Object> filters = moduleStateService.getAllFilters(chatId);
+        if (filters == null || filters.isEmpty()) {
             return true;
         }
-        Map<Object, Object> allFilters = stateService.getAllFilters(chatId);
-        if (allFilters == null || allFilters.isEmpty()) {
+
+        String savedValue = findMatchingFilter(messageText, filters);
+        if (savedValue == null) {
             return true;
         }
-        String storeValue = null;
-        for (Map.Entry<Object, Object> entry : allFilters.entrySet()) {
+
+        replyWithFilteredMessage(chatId, message.message.id, savedValue);
+        return true;
+    }
+
+    private String extractText(TdApi.UpdateNewMessage message) {
+        if (message.message.content instanceof TdApi.MessageText text) {
+            return text.text.text;
+        } else if (message.message.content instanceof TdApi.MessageVideo video) {
+            return video.caption.text;
+        } else if (message.message.content instanceof TdApi.MessagePhoto photo) {
+            return photo.caption.text;
+        }
+        return null;
+    }
+
+    private String findMatchingFilter(String messageText, Map<Object, Object> filters) {
+        for (Map.Entry<Object, Object> entry : filters.entrySet()) {
             String trigger = entry.getKey().toString();
-            if (textMessage.matches(".*\\b" + Pattern.quote(trigger) + "\\b.*")) {
-                storeValue = entry.getValue().toString();
-                break;
+            if (messageText.matches(".*\\b" + Pattern.quote(trigger) + "\\b.*")) {
+                return entry.getValue().toString();
             }
         }
-        if (storeValue == null || storeValue.isEmpty()) {
-            return true;
-        }
-        String[] parts = storeValue.split(":");
+        return null;
+    }
+
+    private void replyWithFilteredMessage(long chatId, long replyToMessageId, String savedValue) {
+        String[] parts = savedValue.split(":");
         long sourceChatId = Long.parseLong(parts[0]);
         long sourceMessageId = Long.parseLong(parts[1]);
 
-        client.send(
-                new TdApi.GetMessage(sourceChatId, sourceMessageId), messageresult -> {
-                    if (messageresult.isError()) {
-                        return;
-                    }
-                    TdApi.InputMessageContent inputMessageContent = copyMessage.convertToInput(messageresult.get().content);
-                    if (inputMessageContent != null) {
-                        client.send(
-                                new TdApi.SendMessage(
-                                        chatId,
-                                        0,
-                                        new TdApi.InputMessageReplyToMessage(message.message.id, null, 0),
-                                        null,
-                                        null,
-                                        inputMessageContent
-                                )
-                        );
-                    }
-
-                }
-        );
-        return true;
+        client.send(new TdApi.GetMessage(sourceChatId, sourceMessageId), result -> {
+            if (result.isError()) {
+                return;
+            }
+            TdApi.InputMessageContent inputContent = copyMessage.convertToInput(result.get().content);
+            if (inputContent != null) {
+                client.send(new TdApi.SendMessage(
+                        chatId,
+                        0,
+                        new TdApi.InputMessageReplyToMessage(replyToMessageId, null, 0),
+                        null,
+                        null,
+                        inputContent
+                ));
+            }
+        });
     }
 }
