@@ -29,9 +29,21 @@ sleep 3
 pkill -f $JAR_NAME
 
 if [ -f "target/$JAR_NAME" ]; then
-    echo "Starting new bot..."
+    echo "Exploding JAR for JShell classpath compatibility..."
+    rm -rf target/exploded
+    mkdir -p target/exploded
+    cd target/exploded && jar xf "../$JAR_NAME" && cd "$WORK_DIR"
+
+    MAIN_CLASS=$(unzip -p "target/$JAR_NAME" BOOT-INF/classes/META-INF/MANIFEST.MF 2>/dev/null | grep "Start-Class" | awk '{print $2}' | tr -d '\r')
+    if [ -z "$MAIN_CLASS" ]; then
+        MAIN_CLASS=$(unzip -p "target/$JAR_NAME" META-INF/MANIFEST.MF 2>/dev/null | grep "Start-Class" | awk '{print $2}' | tr -d '\r')
+    fi
+
+    echo "Starting new bot (exploded, main=$MAIN_CLASS)..."
     if [ -x "$JAVA_CMD" ]; then
-        setsid $JAVA_CMD -XX:+UseG1GC -Xmx128m -Xms64m -Xss256k -XX:MaxMetaspaceSize=256m -jar target/$JAR_NAME --server.port=9003> bot_runtime.log 2>&1 &
+        setsid $JAVA_CMD -XX:+UseG1GC -Xmx128m -Xms64m -Xss256k -XX:MaxMetaspaceSize=256m \
+            -cp "target/exploded/BOOT-INF/classes:target/exploded/BOOT-INF/lib/*" \
+            $MAIN_CLASS --server.port=9003 > bot_runtime.log 2>&1 &
         echo "New bot launched."
     else
         echo "CRITICAL: Java command not found at $JAVA_CMD"
