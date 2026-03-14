@@ -1,7 +1,6 @@
 package com.yann.demosping.plugin;
 
 import com.yann.demosping.annotations.UserBotCommand;
-import com.yann.demosping.bot.inline.Exec;
 import com.yann.demosping.service.*;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
