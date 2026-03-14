@@ -7,9 +7,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.PrintStream;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -51,7 +56,7 @@ public class EvalService {
         PrintStream oldOut = System.out;
         System.setOut(new PrintStream(baos));
 
-        try (JShell jshell = JShell.builder().executionEngine("local").build()) {
+        try (JShell jshell = buildJShell()) {
             // Load init lines one by one (JShell processes complete statements)
             for (String line : INIT.split("\n")) {
                 if (!line.isBlank()) {
@@ -99,6 +104,33 @@ public class EvalService {
         } finally {
             System.setOut(oldOut);
         }
+    }
+
+    private JShell buildJShell() {
+        JShell jshell = JShell.builder().executionEngine("local").build();
+
+        Set<String> cp = new LinkedHashSet<>();
+
+        // Standard classpath (works in IDE and exploded JAR deployments)
+        String javaCp = System.getProperty("java.class.path", "");
+        for (String entry : javaCp.split(File.pathSeparator)) {
+            if (!entry.isBlank()) cp.add(entry);
+        }
+
+        // Walk classloader chain to pick up extra URLs (Spring Boot LaunchedURLClassLoader)
+        ClassLoader cl = Thread.currentThread().getContextClassLoader();
+        while (cl != null) {
+            if (cl instanceof URLClassLoader urlCl) {
+                for (URL url : urlCl.getURLs()) {
+                    try { cp.add(new File(url.toURI()).getAbsolutePath()); }
+                    catch (Exception ignored) { cp.add(url.getPath()); }
+                }
+            }
+            cl = cl.getParent();
+        }
+
+        cp.forEach(jshell::addToClasspath);
+        return jshell;
     }
 
     public void storeEntry(String evalId, String code, EvalContext.Snapshot snapshot) {
