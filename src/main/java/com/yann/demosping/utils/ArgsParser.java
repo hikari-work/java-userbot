@@ -20,7 +20,7 @@ public class ArgsParser {
      * )
      * )?              -> Seluruh bagian value bersifat opsional (untuk flag boolean)
      */
-    private static final Pattern ARG_PATTERN = Pattern.compile("-([\\w-]+)(?:\\s+(?:\"([^\"]*)\"|'([^']*)'|([^\\s-][^\\s]*)))?");
+    private static final Pattern ARG_PATTERN = Pattern.compile("-([\\w-]+)(?:\\s+(?:\"([^\"]*)\"|'([^']*)'|([^\\s-]\\S*)))?");
 
     public static Map<String, String> parse(String text) {
         Map<String, String> params = new HashMap<>();

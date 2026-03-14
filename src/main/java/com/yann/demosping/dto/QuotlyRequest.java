@@ -20,7 +20,6 @@ public class QuotlyRequest {
 
     @Data @Builder
     public static class QuotlyMessage {
-        // PERBAIKAN: Inisialisasi default agar jadi [] bukan null di JSON
         @Builder.Default
         private List<QuotlyEntity> entities = new ArrayList<>();
 
@@ -30,7 +29,6 @@ public class QuotlyRequest {
         private QuotlyMessage replyMessage;
     }
 
-    // ... sisa class QuotlySender, QuotlyPhoto, QuotlyEntity sama ...
     @Data @Builder
     public static class QuotlySender {
         private long id;

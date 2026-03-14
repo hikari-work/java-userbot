@@ -2,7 +2,6 @@ package com.yann.demosping.bot.inline;
 
 import com.yann.demosping.bot.manager.InlineQuery;
 import com.yann.demosping.service.ExecResultCache;
-import com.yann.demosping.service.ShellExecutors;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.extern.slf4j.Slf4j;
@@ -11,56 +10,42 @@ import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
-public class Exec {
+public class EvalInlineHandler {
 
-    private final ShellExecutors shellExecutors;
-    private final ExecResultCache execResultCache;
+    private final ExecResultCache resultCache;
     private final SimpleTelegramClient client;
 
-    public Exec(ShellExecutors shellExecutors,
-                ExecResultCache execResultCache,
-                @Qualifier("botClient") SimpleTelegramClient client) {
-        this.shellExecutors = shellExecutors;
-        this.execResultCache = execResultCache;
+    public EvalInlineHandler(ExecResultCache resultCache,
+                             @Qualifier("botClient") SimpleTelegramClient client) {
+        this.resultCache = resultCache;
         this.client = client;
     }
 
-    @InlineQuery(commands = "exec", regex = "^exec.*")
-    public void exec(TdApi.UpdateNewInlineQuery query) {
-        String cmd = query.query.replaceFirst("^exec\\s+", "");
-        if (cmd.trim().isEmpty()) return;
+    @InlineQuery(commands = "eval", regex = "^eval .+")
+    public void eval(TdApi.UpdateNewInlineQuery query) {
+        // query format: "eval <evalId>"
+        String evalId = query.query.substring(5).trim();
+        String resultId = "eval_" + System.currentTimeMillis();
 
-        String resultId = "exec_" + System.currentTimeMillis();
-        String cached = execResultCache.getAndRemove(cmd);
-
-        if (cached != null) {
-            buildAndAnswer(query.id, resultId, cmd, cached);
-        } else {
-            // Fallback for direct inline usage (not triggered by ExecPlugin)
-            shellExecutors.execute(cmd)
-                    .thenAccept(result -> buildAndAnswer(query.id, resultId, cmd, result))
-                    .exceptionally(ex -> {
-                        log.error("Exec inline error for cmd: {}", cmd, ex);
-                        return null;
-                    });
+        String output = resultCache.getAndRemove(evalId);
+        if (output == null) {
+            log.warn("No cached eval result for evalId={}", evalId);
+            return;
         }
+
+        buildAndAnswer(query.id, resultId, evalId, output);
     }
 
-    private void buildAndAnswer(long queryId, String resultId, String cmd, String output) {
-        if (output == null || output.isEmpty()) output = "No output";
-        String truncated = output.length() > 1000
-                ? output.substring(0, 1000) + "\n...(truncated)"
-                : output;
-
-        String html = "<b>Input:</b>\n<pre>" + escapeHtml(cmd) + "</pre>\n\n" +
-                "<b>Output:</b>\n<pre>" + escapeHtml(truncated) + "</pre>";
+    private void buildAndAnswer(long queryId, String resultId, String evalId, String output) {
+        String truncated = output.length() > 2000 ? output.substring(0, 2000) + "\n...(truncated)" : output;
+        String html = "<b>Eval output:</b>\n<pre>" + escapeHtml(truncated) + "</pre>";
 
         client.send(new TdApi.ParseTextEntities(html, new TdApi.TextParseModeHTML()), parseResult -> {
             TdApi.FormattedText formattedText = parseResult.isError()
                     ? new TdApi.FormattedText(html, new TdApi.TextEntity[0])
                     : parseResult.get();
 
-            TdApi.ReplyMarkupInlineKeyboard keyboard = buildKeyboard(cmd, resultId);
+            TdApi.ReplyMarkupInlineKeyboard keyboard = buildKeyboard(resultId, evalId);
 
             TdApi.InputMessageText inputMessage = new TdApi.InputMessageText();
             inputMessage.text = formattedText;
@@ -68,8 +53,8 @@ public class Exec {
 
             TdApi.InputInlineQueryResultArticle article = new TdApi.InputInlineQueryResultArticle();
             article.id = resultId;
-            article.title = "Exec: " + cmd;
-            article.description = "Output ready";
+            article.title = "Eval result";
+            article.description = truncated.lines().findFirst().orElse("(empty)");
             article.inputMessageContent = inputMessage;
             article.replyMarkup = keyboard;
 
@@ -81,7 +66,7 @@ public class Exec {
 
             client.send(answer, resp -> {
                 if (resp.isError()) {
-                    log.error("AnswerInlineQuery failed: {} - {}",
+                    log.error("AnswerInlineQuery (eval) failed: {} - {}",
                             resp.getError().code, resp.getError().message);
                 }
             });
@@ -89,11 +74,10 @@ public class Exec {
     }
 
     /**
-     * Build the inline keyboard.
-     * Delete payload: "del:<resultId>"
-     * Re-run payload: "exec:<resultId>:<cmd>"  (split on ":" with limit 2 after stripping "exec:")
+     * Delete: "del:<resultId>"
+     * Re-run: "reeval:<resultId>:<evalId>"  (evalId used to look up snapshot + code)
      */
-    public static TdApi.ReplyMarkupInlineKeyboard buildKeyboard(String cmd, String resultId) {
+    public static TdApi.ReplyMarkupInlineKeyboard buildKeyboard(String resultId, String evalId) {
         TdApi.InlineKeyboardButton deleteBtn = new TdApi.InlineKeyboardButton();
         deleteBtn.text = "🗑 Delete";
         TdApi.InlineKeyboardButtonTypeCallback delCb = new TdApi.InlineKeyboardButtonTypeCallback();
@@ -103,7 +87,7 @@ public class Exec {
         TdApi.InlineKeyboardButton rerunBtn = new TdApi.InlineKeyboardButton();
         rerunBtn.text = "🔄 Re-run";
         TdApi.InlineKeyboardButtonTypeCallback rerunCb = new TdApi.InlineKeyboardButtonTypeCallback();
-        rerunCb.data = ("exec:" + resultId + ":" + cmd).getBytes();
+        rerunCb.data = ("reeval:" + resultId + ":" + evalId).getBytes();
         rerunBtn.type = rerunCb;
 
         TdApi.ReplyMarkupInlineKeyboard keyboard = new TdApi.ReplyMarkupInlineKeyboard();

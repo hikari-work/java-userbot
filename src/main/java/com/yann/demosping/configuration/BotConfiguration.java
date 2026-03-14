@@ -56,16 +56,13 @@ public class BotConfiguration {
 
         builder.addUpdateHandler(TdApi.UpdateNewInlineQuery.class, inlineBotDispatcher::dispatch);
 
-        builder.addUpdateHandler(TdApi.UpdateNewCallbackQuery.class, query -> {
-
-            if (query.payload instanceof TdApi.CallbackQueryPayloadData) {
-                byte[] data = ((TdApi.CallbackQueryPayloadData) query.payload).data;
-                log.info("Payload Data: {}", new String(data));
-            }
-            log.info("================================");
-
-            callbackDispatcher.dispatch(query);
+        builder.addUpdateHandler(TdApi.UpdateNewChosenInlineResult.class, result -> {
+            log.info("Chosen inline result: query='{}' resultId='{}' inlineMessageId='{}'",
+                    result.query, result.resultId, result.inlineMessageId);
         });
+
+        // Inline callback queries come from buttons on via-bot messages
+        builder.addUpdateHandler(TdApi.UpdateNewInlineCallbackQuery.class, callbackDispatcher::dispatchInline);
 
         return builder.build(supplier);
     }

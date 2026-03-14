@@ -2,6 +2,8 @@ package com.yann.demosping.configuration;
 
 import com.yann.demosping.bot.manager.CallbackDispatcher;
 import com.yann.demosping.manager.Dispatcher;
+import com.yann.demosping.plugin.EvalPlugin;
+import com.yann.demosping.plugin.ExecPlugin;
 import it.tdlight.Log;
 import it.tdlight.Slf4JLogMessageHandler;
 import it.tdlight.client.*;
@@ -12,6 +14,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -54,9 +57,15 @@ public class UserBotConfiguration {
     }
 
     @Bean
-    public ApplicationRunner runner(@Qualifier("userBotClient") SimpleTelegramClient client, Dispatcher dispatcher, CallbackDispatcher callbackDispatcher) {
+    public ApplicationRunner runner(@Qualifier("userBotClient") SimpleTelegramClient client,
+                                    Dispatcher dispatcher,
+                                    CallbackDispatcher callbackDispatcher,
+                                    @Lazy ExecPlugin execPlugin,
+                                    @Lazy EvalPlugin evalPlugin) {
         return args -> {
             client.addUpdateHandler(TdApi.UpdateNewMessage.class, dispatcher::onUpdateMessage);
+            client.addUpdateHandler(TdApi.UpdateMessageContent.class, execPlugin::onMessageEdit);
+            client.addUpdateHandler(TdApi.UpdateMessageContent.class, evalPlugin::onMessageEdit);
             client.addUpdateHandler(TdApi.UpdateNewCallbackQuery.class, callbackDispatcher::dispatch);
             client.addUpdateHandler(TdApi.UpdateAuthorizationState.class, update -> {
                 TdApi.AuthorizationState authorizationState = update.authorizationState;
