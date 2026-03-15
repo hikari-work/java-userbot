@@ -2,6 +2,8 @@ package com.yann.demosping.configuration;
 
 import com.yann.demosping.bot.manager.CallbackDispatcher;
 import com.yann.demosping.bot.manager.InlineBotDispatcher;
+import com.yann.demosping.dto.GcastConfig;
+import com.yann.demosping.service.GcastStateService;
 import it.tdlight.Log;
 import it.tdlight.Slf4JLogMessageHandler;
 import it.tdlight.client.*;
@@ -46,7 +48,8 @@ public class BotConfiguration {
     public SimpleTelegramClient runner(@Qualifier("botSupplier") AuthenticationSupplier<?> supplier,
                                        @Qualifier("bot") TDLibSettings settings,
                                        InlineBotDispatcher inlineBotDispatcher,
-                                       CallbackDispatcher callbackDispatcher) {
+                                       CallbackDispatcher callbackDispatcher,
+                                       GcastStateService gcastStateService) {
         log.info("Creating Client");
         SimpleTelegramClientFactory simpleTelegramClientFactory = new SimpleTelegramClientFactory();
         log.info("Building Client");
@@ -59,10 +62,20 @@ public class BotConfiguration {
         builder.addUpdateHandler(TdApi.UpdateNewChosenInlineResult.class, result -> {
             log.info("Chosen inline result: query='{}' resultId='{}' inlineMessageId='{}'",
                     result.query, result.resultId, result.inlineMessageId);
+            if (result.resultId.startsWith("wizard_")) {
+                String sid = result.resultId.substring(7);
+                GcastConfig cfg = gcastStateService.getSession(sid);
+                if (cfg != null) {
+                    cfg.controlInlineMessageId = result.inlineMessageId;
+                    gcastStateService.saveSession(sid, cfg);
+                }
+            }
         });
 
-        // Inline callback queries come from buttons on via-bot messages
         builder.addUpdateHandler(TdApi.UpdateNewInlineCallbackQuery.class, callbackDispatcher::dispatchInline);
+
+        // Regular callback queries from buttons on bot-sent messages (e.g., gcast panel)
+        builder.addUpdateHandler(TdApi.UpdateNewCallbackQuery.class, callbackDispatcher::dispatchBotCallback);
 
         return builder.build(supplier);
     }

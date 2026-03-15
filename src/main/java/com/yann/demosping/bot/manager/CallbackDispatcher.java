@@ -2,6 +2,7 @@ package com.yann.demosping.bot.manager;
 
 import com.yann.demosping.bot.inline.Exec;
 import com.yann.demosping.bot.inline.EvalInlineHandler;
+import com.yann.demosping.bot.inline.GcastCallbackHandler;
 import com.yann.demosping.service.EvalContext;
 import com.yann.demosping.service.EvalService;
 import com.yann.demosping.service.ExecMessageStore;
@@ -11,6 +12,7 @@ import java.util.concurrent.CompletableFuture;
 import it.tdlight.jni.TdApi;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
@@ -23,17 +25,20 @@ public class CallbackDispatcher {
     private final ShellExecutors shellExecutors;
     private final EvalService evalService;
     private final ExecMessageStore execMessageStore;
+    private final GcastCallbackHandler gcastCallbackHandler;
 
     public CallbackDispatcher(ApplicationContext applicationContext,
                               @Qualifier("userBotClient") SimpleTelegramClient userBotClient,
                               ShellExecutors shellExecutors,
                               EvalService evalService,
-                              ExecMessageStore execMessageStore) {
+                              ExecMessageStore execMessageStore,
+                              @Lazy GcastCallbackHandler gcastCallbackHandler) {
         this.applicationContext = applicationContext;
         this.userBotClient = userBotClient;
         this.shellExecutors = shellExecutors;
         this.evalService = evalService;
         this.execMessageStore = execMessageStore;
+        this.gcastCallbackHandler = gcastCallbackHandler;
     }
 
     private SimpleTelegramClient botClient() {
@@ -42,8 +47,26 @@ public class CallbackDispatcher {
 
     /** Called for buttons on regular (non-via-bot) messages — userbot side. */
     public void dispatch(TdApi.UpdateNewCallbackQuery callbackQuery) {
-        log.info("Received regular callback query from chatId={} messageId={}",
-                callbackQuery.chatId, callbackQuery.messageId);
+        if (!(callbackQuery.payload instanceof TdApi.CallbackQueryPayloadData data)) return;
+        String payload = new String(data.data);
+        log.info("Received callback query: payload='{}' chatId={} messageId={}",
+                payload, callbackQuery.chatId, callbackQuery.messageId);
+
+        if (payload.startsWith("gc:")) {
+            gcastCallbackHandler.handle(callbackQuery, payload);
+        }
+    }
+
+    /** Called for buttons on bot-sent regular messages — bot side (e.g., gcast panel). */
+    public void dispatchBotCallback(TdApi.UpdateNewCallbackQuery callbackQuery) {
+        if (!(callbackQuery.payload instanceof TdApi.CallbackQueryPayloadData data)) return;
+        String payload = new String(data.data);
+        log.info("Received bot callback: payload='{}' chatId={} messageId={}",
+                payload, callbackQuery.chatId, callbackQuery.messageId);
+
+        if (payload.startsWith("gc:")) {
+            gcastCallbackHandler.handle(callbackQuery, payload);
+        }
     }
 
     /** Called for buttons on via-bot inline messages — bot side. */
@@ -74,6 +97,8 @@ public class CallbackDispatcher {
             String resultId = rest.substring(0, colonIdx);
             String evalId = rest.substring(colonIdx + 1);
             handleReeval(callbackQuery.id, inlineMessageId, resultId, evalId);
+        } else if (payload.startsWith("gc:")) {
+            gcastCallbackHandler.handleInline(callbackQuery, payload);
         }
     }
 
