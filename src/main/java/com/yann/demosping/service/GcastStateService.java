@@ -102,7 +102,7 @@ public class GcastStateService {
     }
 
     public boolean isCancelled(String sid) {
-        return Boolean.TRUE.equals(redisTemplate.hasKey(CANCEL_PREFIX + sid));
+        return redisTemplate.hasKey(CANCEL_PREFIX + sid);
     }
 
     public void clearCancelFlag(String sid) {

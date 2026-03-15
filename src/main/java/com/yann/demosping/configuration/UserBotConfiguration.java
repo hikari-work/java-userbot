@@ -4,6 +4,7 @@ import com.yann.demosping.bot.manager.CallbackDispatcher;
 import com.yann.demosping.manager.Dispatcher;
 import com.yann.demosping.plugin.EvalPlugin;
 import com.yann.demosping.plugin.ExecPlugin;
+import com.yann.demosping.service.ChatFolderCache;
 import it.tdlight.Log;
 import it.tdlight.Slf4JLogMessageHandler;
 import it.tdlight.client.*;
@@ -60,6 +61,7 @@ public class UserBotConfiguration {
     public ApplicationRunner runner(@Qualifier("userBotClient") SimpleTelegramClient client,
                                     Dispatcher dispatcher,
                                     CallbackDispatcher callbackDispatcher,
+                                    ChatFolderCache chatFolderCache,
                                     @Lazy ExecPlugin execPlugin,
                                     @Lazy EvalPlugin evalPlugin) {
         return args -> {
@@ -67,6 +69,7 @@ public class UserBotConfiguration {
             client.addUpdateHandler(TdApi.UpdateMessageContent.class, execPlugin::onMessageEdit);
             client.addUpdateHandler(TdApi.UpdateMessageContent.class, evalPlugin::onMessageEdit);
             client.addUpdateHandler(TdApi.UpdateNewCallbackQuery.class, callbackDispatcher::dispatch);
+            client.addUpdateHandler(TdApi.UpdateChatFolders.class, chatFolderCache::update);
             client.addUpdateHandler(TdApi.UpdateAuthorizationState.class, update -> {
                 TdApi.AuthorizationState authorizationState = update.authorizationState;
                 if (authorizationState instanceof TdApi.AuthorizationStateWaitTdlibParameters) {
