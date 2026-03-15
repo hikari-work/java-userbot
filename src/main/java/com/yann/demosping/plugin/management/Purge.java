@@ -50,34 +50,9 @@ public class Purge {
             case "purge" -> {
                 if (message.message.replyTo instanceof TdApi.MessageReplyToMessage replyTo) {
                     long replyMsgId = replyTo.messageId;
-                    client.send(new TdApi.GetChatHistory(chatId, commandMsgId, 0, 1000, false), result -> {
-                        if (result.isError()) {
-                            log.error("Purge error: {}", result.getError().message);
-                            return;
-                        }
-                        TdApi.Messages history = result.get();
-                        if (history.totalCount == 0) return;
-                        log.info("Total Count Message is {}", history.totalCount);
-
-                        List<TdApi.Message> messagesToDelete = new ArrayList<>();
-                        messagesToDelete.add(message.message);
-
-                        boolean foundReply = false;
-
-                        for (TdApi.Message msg : history.messages) {
-                            messagesToDelete.add(msg);
-                            if (msg.id == replyMsgId) {
-                                foundReply = true;
-                                break;
-                            }
-                        }
-
-                        if (foundReply) {
-                            deleteMessages(chatId, messagesToDelete);
-                        } else {
-                            sendError(chatId, commandMsgId, "⚠️ Pesan yang di-reply terlalu lama (lebih dari 1000 pesan yang lalu).");
-                        }
-                    });
+                    List<Long> toDelete = new ArrayList<>();
+                    toDelete.add(commandMsgId);
+                    fetchUntilFound(chatId, commandMsgId, replyMsgId, toDelete, 0);
                 } else {
                     sendError(chatId, commandMsgId, "❌ Reply pesan yang ingin di-purge.");
                 }
@@ -125,21 +100,72 @@ public class Purge {
         }
     }
 
+    private static final int FETCH_BATCH = 100;
+    private static final int MAX_BATCHES = 100; // max ~10.000 pesan
+
+    /**
+     * Rekursif fetch history ke belakang sampai targetMsgId ditemukan,
+     * lalu hapus semua pesan yang terkumpul.
+     */
+    private void fetchUntilFound(long chatId, long fromMsgId, long targetMsgId,
+                                  List<Long> accumulated, int batchCount) {
+        if (batchCount >= MAX_BATCHES) {
+            log.warn("Purge: batas batch tercapai tanpa menemukan target msgId={}", targetMsgId);
+            deleteMessageIds(chatId, accumulated);
+            return;
+        }
+
+        client.send(new TdApi.GetChatHistory(chatId, fromMsgId, 0, FETCH_BATCH, false), result -> {
+            if (result.isError()) {
+                log.error("Purge fetch error: {}", result.getError().message);
+                return;
+            }
+            TdApi.Messages history = result.get();
+            if (history.messages.length == 0) {
+                log.warn("Purge: tidak ada pesan lagi, target msgId={} tidak ditemukan", targetMsgId);
+                return;
+            }
+
+            long lastId = fromMsgId;
+            boolean found = false;
+            for (TdApi.Message msg : history.messages) {
+                accumulated.add(msg.id);
+                lastId = msg.id;
+                if (msg.id == targetMsgId) {
+                    found = true;
+                    break;
+                }
+            }
+
+            if (found) {
+                log.info("Purge: ditemukan setelah {} batch, total {} pesan", batchCount + 1, accumulated.size());
+                deleteMessageIds(chatId, accumulated);
+            } else {
+                final long nextFrom = lastId;
+                fetchUntilFound(chatId, nextFrom, targetMsgId, accumulated, batchCount + 1);
+            }
+        });
+    }
+
+    /** Hapus message IDs dalam chunks 100 (batas TDLib DeleteMessages). */
+    private void deleteMessageIds(long chatId, List<Long> ids) {
+        for (int i = 0; i < ids.size(); i += 100) {
+            long[] chunk = ids.subList(i, Math.min(i + 100, ids.size()))
+                    .stream().mapToLong(Long::longValue).toArray();
+            client.send(new TdApi.DeleteMessages(chatId, chunk, true), result -> {
+                if (result.isError()) {
+                    log.error("Purge delete error: {}", result.getError().message);
+                }
+            });
+        }
+    }
+
     /**
      * Helper untuk menghapus list pesan
      */
     private void deleteMessages(long chatId, List<TdApi.Message> messages) {
         if (messages.isEmpty()) return;
-
-        long[] messageIds = messages.stream()
-                .mapToLong(msg -> msg.id)
-                .toArray();
-
-        client.send(new TdApi.DeleteMessages(chatId, messageIds, true), result -> {
-            if (result.isError()) {
-                log.error("Gagal delete: {}", result.getError().message);
-            }
-        });
+        deleteMessageIds(chatId, messages.stream().map(m -> m.id).toList());
     }
 
     private void sendError(long chatId, long replyToMsgId, String text) {
