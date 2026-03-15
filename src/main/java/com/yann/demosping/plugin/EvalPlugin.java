@@ -10,9 +10,10 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 
 @Slf4j
 @Component
@@ -128,12 +129,14 @@ public class EvalPlugin {
 
         // Must run off the TDLib thread — EvalContext.send() blocks waiting for a TDLib callback,
         // which would deadlock if called from the TDLib thread itself.
-        CompletableFuture.runAsync(() -> {
+        final long finalChatId = chatId;
+        final EvalService.EvalEntry finalOldEntry = oldEntry;
+        Mono.<Void>fromRunnable(() -> {
             EvalContext.c = userBotClient;
-            if (oldEntry != null) {
-                EvalContext.restore(oldEntry.snapshot());
+            if (finalOldEntry != null) {
+                EvalContext.restore(finalOldEntry.snapshot());
             } else {
-                EvalContext.chatId = chatId;
+                EvalContext.chatId = finalChatId;
                 EvalContext.msgId = cmdMsgId;
             }
 
@@ -149,16 +152,14 @@ public class EvalPlugin {
 
             resultCache.put(evalId, output);
             evalService.storeEntry(evalId, newCode, snapshot);
-            sendViaInlineBot(chatId, cmdMsgId, evalId, output);
-        }).exceptionally(ex -> {
-            log.error("Eval re-run failed for code: {}", newCode, ex);
-            return null;
-        });
+            sendViaInlineBot(finalChatId, cmdMsgId, evalId, output);
+        }).subscribeOn(Schedulers.boundedElastic())
+          .subscribe(null, ex -> log.error("Eval re-run failed for code: {}", newCode, ex));
     }
 
     private void sendViaInlineBot(long chatId, long cmdMsgId, String evalId, String output) {
         getInlineResults.inlineQuery(chatId, botId, "eval " + evalId)
-                .thenAccept(results -> {
+                .subscribe(results -> {
                     if (results == null || results.results == null || results.results.length == 0) {
                         log.warn("No inline results for eval query evalId={}", evalId);
                         return;
@@ -184,11 +185,7 @@ public class EvalPlugin {
                             log.info("Eval result sent: evalId={} msgId={} resultId={}", evalId, sentMsg.id, resultId);
                         }
                     });
-                })
-                .exceptionally(ex -> {
-                    log.error("GetInlineQueryResults failed for eval evalId={}", evalId, ex);
-                    return null;
-                });
+                }, ex -> log.error("GetInlineQueryResults failed for eval evalId={}", evalId, ex));
     }
 
     private String extractResultId(TdApi.InlineQueryResult result) {

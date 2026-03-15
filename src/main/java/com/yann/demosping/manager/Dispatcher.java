@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Flux;
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.List;
@@ -28,35 +29,28 @@ public class Dispatcher {
     public void onUpdateMessage(TdApi.UpdateNewMessage message) {
         String text = extractText(message);
 
-        for (MessageInterceptor interceptor : interceptors) {
-            try {
-                if (!interceptor.preHandle(message, text)) {
-                    return;
-                }
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-        }
+        Flux.fromIterable(interceptors)
+                .concatMap(i -> i.preHandle(message, text))
+                .takeWhile(passed -> passed)
+                .count()
+                .subscribe(passedCount -> {
+                    if (passedCount < interceptors.size()) return;
+                    dispatchCommand(message, text);
+                }, ex -> log.error("Interceptor error processing message", ex));
+    }
 
-        if (!(message.message.content instanceof TdApi.MessageText textContent)) {
-            return;
-        }
+    private void dispatchCommand(TdApi.UpdateNewMessage message, String text) {
+        if (!(message.message.content instanceof TdApi.MessageText textContent)) return;
 
         String rawText = textContent.text.text;
-        if (!rawText.startsWith(prefix)) {
-            return;
-        }
+        if (!rawText.startsWith(prefix)) return;
 
         String[] parts = rawText.split(" ", 2);
         String trigger = parts[0].replace(prefix, "");
         CommandContainer container = commandRegistry.getCommand(trigger);
-        if (container == null) {
-            return;
-        }
+        if (container == null) return;
 
-        if (container.command().sudoOnly() && !message.message.isOutgoing) {
-            return;
-        }
+        if (container.command().sudoOnly() && !message.message.isOutgoing) return;
 
         try {
             container.method().invoke(container.bean(), message, parts.length > 1 ? parts[1] : "");

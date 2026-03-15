@@ -19,13 +19,12 @@ public class FastFetchHandler {
         long chatId = message.message.chatId;
         long messageId = message.message.id;
         editMessage.editMessage(chatId, messageId, "Fetching...")
-                .thenAcceptAsync(sendMessage -> {
-                    executors.execute("fastfetch")
-                            .thenAccept(result -> {
-                                String formatted = "<code>\n" + result + "\n</code>";
-                                editMessage.editMessage(chatId, messageId, formatted);
-                            });
-                });
+                .then(executors.execute("fastfetch"))
+                .flatMap(result -> {
+                    String formatted = "<code>\n" + result + "\n</code>";
+                    return editMessage.editMessage(chatId, messageId, formatted);
+                })
+                .subscribe();
     }
 
 }

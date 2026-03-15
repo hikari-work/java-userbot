@@ -37,33 +37,16 @@ public class Ping {
 
         long startTime = System.currentTimeMillis();
 
-        try {
-            String initialText = "<i>Pinging..</i>";
+        String initialText = "<i>Pinging..</i>";
 
-            editMessage.editMessage(chatId, messageId, initialText)
-                    .thenAccept(message -> {
-                        long totalTime = (System.currentTimeMillis() - startTime) / 4;
-                        String finalStats = getRuntimeInformation(totalTime);
-
-                        editMessage.editMessage(chatId, messageId, finalStats)
-                                .exceptionally(error -> {
-                                    log.error("Failed to edit final stats: {}", error.getMessage());
-                                    return null;
-                                });
-                    })
-                    .exceptionally(error -> {
-                        log.error("Failed to edit initial message: {}", error.getMessage());
-                        return null;
-                    });
-
-        } catch (Exception e) {
-            log.error("Error in ping handler: {}", e.getMessage(), e);
-            editMessage.editMessage(chatId, messageId, "❌ Error: " + e.getMessage())
-                    .exceptionally(error -> {
-                        log.error("Failed to edit error message: {}", error.getMessage());
-                        return null;
-                    });
-        }
+        editMessage.editMessage(chatId, messageId, initialText)
+                .flatMap(ignored -> {
+                    long totalTime = (System.currentTimeMillis() - startTime) / 4;
+                    String finalStats = getRuntimeInformation(totalTime);
+                    return editMessage.editMessage(chatId, messageId, finalStats);
+                })
+                .doOnError(error -> log.error("Failed to edit ping message: {}", error.getMessage()))
+                .subscribe();
     }
 
     private String getRuntimeInformation(Long latency) {

@@ -49,12 +49,16 @@ public class UserBotConfiguration {
         return AuthenticationSupplier.user(phoneNumber);
     }
 
+    @Bean("userBotFactory")
+    public SimpleTelegramClientFactory userBotFactory() {
+        return new SimpleTelegramClientFactory();
+    }
+
     @Bean("userBotClient")
     public SimpleTelegramClient clientBuilder(@Qualifier("userBot") TDLibSettings settings,
-                                              @Qualifier("userBotSupplier") AuthenticationSupplier<?> authenticationSupplier) {
-
-        SimpleTelegramClientFactory simpleTelegramClientFactory = new SimpleTelegramClientFactory();
-        return simpleTelegramClientFactory.builder(settings).build(authenticationSupplier);
+                                              @Qualifier("userBotSupplier") AuthenticationSupplier<?> authenticationSupplier,
+                                              @Qualifier("userBotFactory") SimpleTelegramClientFactory factory) {
+        return factory.builder(settings).build(authenticationSupplier);
     }
 
     @Bean

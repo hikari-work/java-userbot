@@ -2,9 +2,9 @@ package com.yann.demosping.service;
 
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
+import reactor.core.publisher.Mono;
 
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
+import java.time.Duration;
 
 /**
  * Static context holder for JShell eval.
@@ -30,12 +30,10 @@ public final class EvalContext {
      * Example: var me = EvalContext.send(new TdApi.GetMe());
      */
     public static <T extends TdApi.Object> T send(TdApi.Function<T> fn) throws Exception {
-        CompletableFuture<T> future = new CompletableFuture<>();
-        c.send(fn, result -> {
-            if (result.isError()) future.completeExceptionally(new RuntimeException(result.getError().message));
-            else future.complete(result.get());
-        });
-        return future.get(10, TimeUnit.SECONDS);
+        return Mono.<T>create(sink -> c.send(fn, result -> {
+            if (result.isError()) sink.error(new RuntimeException(result.getError().message));
+            else sink.success(result.get());
+        })).block(Duration.ofSeconds(10));
     }
 
     /** Context snapshot — stored so Re-run can restore the original context. */

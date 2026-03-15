@@ -30,20 +30,20 @@ public class Filter {
 
     @UserBotCommand(commands = {"addfilter", "save"}, description = """
             <b>🏷 Filter Module</b>
-            
+
             Simpan pesan (teks/media) agar bot membalas otomatis ketika kata kunci diketik.
-            
+
             <b>Commands:</b>
             • <code>{prefix}addfilter </code>
             └ Simpan filter (Wajib Reply ke pesan target).
             └ Tambahkan argumen -trig &lt;keyword&gt;
-            
+
             • <code>{prefix}delfilter &lt;keyword&gt;</code>
             └ Hapus filter yang sudah ada.
-            
+
             • <code>{prefix}filters</code>
             └ Lihat daftar filter di chat ini.
-            
+
             <b>Note:</b>
             <i>Reply ke pesan (Foto/Video/Stiker/Text) lalu ketik command save untuk menyimpannya.</i>
             """)
@@ -61,12 +61,12 @@ public class Filter {
             long sourceChatId = messageReplyToMessage.chatId;
             if (sourceChatId == 0) sourceChatId = currentChatId;
             String savedValue = sourceChatId + ":" + sourceMsgId;
-            moduleStateService.saveFilter(sourceChatId, filterTrigger, savedValue);
-            editMessage.editMessage(currentChatId, message.message.id, "<i>Trigger </i><code>" + filterTrigger + "</code><i> has been set</i>")
-                            .exceptionally(ex -> {
-                                globalTelegramExceptionHandler.handle(ex);
-                                return null;
-                            });
+            final String trigger = filterTrigger;
+            moduleStateService.saveFilter(sourceChatId, trigger, savedValue)
+                    .then(editMessage.editMessage(currentChatId, message.message.id,
+                            "<i>Trigger </i><code>" + trigger + "</code><i> has been set</i>"))
+                    .doOnError(globalTelegramExceptionHandler::handle)
+                    .subscribe();
         } else {
             sendDescription(currentChatId, message.message.id);
         }
@@ -76,49 +76,50 @@ public class Filter {
     public void deleteFilterHandler(TdApi.UpdateNewMessage message, String args) {
         long messageId = message.message.id;
         long chatId = message.message.chatId;
-        Map<Object, Object> allFilters = moduleStateService.getAllFilters(chatId);
-        if (allFilters.containsKey(args.trim().toLowerCase())) {
-            moduleStateService.deleteFilter(chatId, args.toLowerCase());
-            editMessage.editMessage(chatId, messageId, "DONE").exceptionally(ex -> {
-                globalTelegramExceptionHandler.handle(ex);
-                return null;
-            });
-        } else {
-            sendDescription(chatId, messageId);
-        }
+        final String trigger = args.trim().toLowerCase();
+        moduleStateService.getAllFilters(chatId)
+                .subscribe(allFilters -> {
+                    if (allFilters.containsKey(trigger)) {
+                        moduleStateService.deleteFilter(chatId, trigger)
+                                .then(editMessage.editMessage(chatId, messageId, "DONE"))
+                                .doOnError(globalTelegramExceptionHandler::handle)
+                                .subscribe();
+                    } else {
+                        sendDescription(chatId, messageId);
+                    }
+                });
     }
 
     @UserBotCommand(commands = {"listfilter"}, description = "")
     public void getAllFilters(TdApi.UpdateNewMessage message, String args) {
         long chatId = message.message.chatId;
         long messageId = message.message.id;
-        Map<Object, Object> allFilters = moduleStateService.getAllFilters(chatId);
-        if (allFilters == null ||allFilters.isEmpty()) {
-            editMessage.editMessage(chatId, messageId, "Empty Filter").exceptionally(ex -> {
-                globalTelegramExceptionHandler.handle(ex);
-                return null;
-            });
-        } else {
-            sendListFilter(allFilters, chatId, messageId);
-        }
+        moduleStateService.getAllFilters(chatId)
+                .subscribe(allFilters -> {
+                    if (allFilters == null || allFilters.isEmpty()) {
+                        editMessage.editMessage(chatId, messageId, "Empty Filter")
+                                .doOnError(globalTelegramExceptionHandler::handle)
+                                .subscribe();
+                    } else {
+                        sendListFilter(allFilters, chatId, messageId);
+                    }
+                });
     }
 
     private void sendDescription(Long chatId, Long messageId) {
         String text = commandRegistry.getCommand("addfilter").command().description();
-        editMessage.editMessage(chatId, messageId, text).exceptionally(ex -> {
-            globalTelegramExceptionHandler.handle(ex);
-            return null;
-        });
+        editMessage.editMessage(chatId, messageId, text)
+                .doOnError(globalTelegramExceptionHandler::handle)
+                .subscribe();
     }
+
     private void sendListFilter(Map<Object, Object> filters, Long chatId, Long messageId) {
         StringBuilder sb = new StringBuilder("<b>List Known Filters In This Chat:</b>\n");
         for (Map.Entry<Object, Object> map : filters.entrySet()) {
             sb.append("<code>").append(map.getKey().toString()).append("</code>\n");
         }
-        editMessage.editMessage(chatId, messageId, sb.toString()).exceptionally(ex -> {
-            globalTelegramExceptionHandler.handle(ex);
-            return null;
-        });
-
+        editMessage.editMessage(chatId, messageId, sb.toString())
+                .doOnError(globalTelegramExceptionHandler::handle)
+                .subscribe();
     }
 }

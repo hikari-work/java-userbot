@@ -5,8 +5,7 @@ import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
-
-import java.util.concurrent.CompletableFuture;
+import reactor.core.publisher.Mono;
 
 @Component
 public class ParseTextEntitiesUtils {
@@ -17,34 +16,29 @@ public class ParseTextEntitiesUtils {
         this.client = client;
     }
 
-    public CompletableFuture<TdApi.FormattedText> formatText(String text, TdApi.TextParseMode parseMode ) {
-        CompletableFuture<TdApi.FormattedText> textFuture = new CompletableFuture<>();
-        client.send(
-                new TdApi.ParseTextEntities(text, parseMode), result -> {
-                    if (result.isError()) {
-                        // Tambahkan pesan error bawaan TDLib agar mudah dideteksi
-                        String errorMsg = result.getError() != null ? result.getError().message : "Unknown Error";
-                        textFuture.completeExceptionally(new FormatTextNotValidException("Text Not Valid: " + errorMsg, 0L,0L));
-                        return; // WAJIB ADA: Mencegah result.get() dipanggil saat terjadi error
-                    }
-                    textFuture.complete(result.get());
-                }
-        );
-        return textFuture;
-    }
-
-    public CompletableFuture<TdApi.FormattedText> formatText(String text) {
-        CompletableFuture<TdApi.FormattedText> textFuture = new CompletableFuture<>();
-        client.send(
-                new TdApi.ParseTextEntities(text, new TdApi.TextParseModeHTML()), result -> {
+    public Mono<TdApi.FormattedText> formatText(String text, TdApi.TextParseMode parseMode) {
+        return Mono.create(sink ->
+                client.send(new TdApi.ParseTextEntities(text, parseMode), result -> {
                     if (result.isError()) {
                         String errorMsg = result.getError() != null ? result.getError().message : "Unknown Error";
-                        textFuture.completeExceptionally(new FormatTextNotValidException("Text Not Valid: " + errorMsg, 0L,0L));
+                        sink.error(new FormatTextNotValidException("Text Not Valid: " + errorMsg, 0L, 0L));
                         return;
                     }
-                    textFuture.complete(result.get());
-                }
+                    sink.success(result.get());
+                })
         );
-        return textFuture;
+    }
+
+    public Mono<TdApi.FormattedText> formatText(String text) {
+        return Mono.create(sink ->
+                client.send(new TdApi.ParseTextEntities(text, new TdApi.TextParseModeHTML()), result -> {
+                    if (result.isError()) {
+                        String errorMsg = result.getError() != null ? result.getError().message : "Unknown Error";
+                        sink.error(new FormatTextNotValidException("Text Not Valid: " + errorMsg, 0L, 0L));
+                        return;
+                    }
+                    sink.success(result.get());
+                })
+        );
     }
 }

@@ -38,11 +38,10 @@ public class Afk {
             reason = "Away From Keyboard";
         }
 
-        moduleStateService.setAfk(true, reason);
-        editMessage.editMessage(chatId, messageId, "Memulai AFK Mode Karena <code>" + reason + "</code>")
-                        .exceptionally(ex -> {
-                            globalTelegramExceptionHandler.handle(ex);
-                            return null;
-                        });
+        final String finalReason = reason;
+        moduleStateService.setAfk(true, finalReason)
+                .then(editMessage.editMessage(chatId, messageId, "Memulai AFK Mode Karena <code>" + finalReason + "</code>"))
+                .doOnError(globalTelegramExceptionHandler::handle)
+                .subscribe();
     }
 }

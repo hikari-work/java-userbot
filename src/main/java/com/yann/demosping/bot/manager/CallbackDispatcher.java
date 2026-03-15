@@ -8,32 +8,33 @@ import com.yann.demosping.service.EvalService;
 import com.yann.demosping.service.ExecMessageStore;
 import com.yann.demosping.service.ShellExecutors;
 import it.tdlight.client.SimpleTelegramClient;
-import java.util.concurrent.CompletableFuture;
 import it.tdlight.jni.TdApi;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 @Slf4j
 @Component
 public class CallbackDispatcher {
 
-    private final ApplicationContext applicationContext;
+    private final ApplicationContext ctx;
     private final SimpleTelegramClient userBotClient;
     private final ShellExecutors shellExecutors;
     private final EvalService evalService;
     private final ExecMessageStore execMessageStore;
     private final GcastCallbackHandler gcastCallbackHandler;
 
-    public CallbackDispatcher(ApplicationContext applicationContext,
+    public CallbackDispatcher(ApplicationContext ctx,
                               @Qualifier("userBotClient") SimpleTelegramClient userBotClient,
                               ShellExecutors shellExecutors,
                               EvalService evalService,
                               ExecMessageStore execMessageStore,
                               @Lazy GcastCallbackHandler gcastCallbackHandler) {
-        this.applicationContext = applicationContext;
+        this.ctx = ctx;
         this.userBotClient = userBotClient;
         this.shellExecutors = shellExecutors;
         this.evalService = evalService;
@@ -42,7 +43,7 @@ public class CallbackDispatcher {
     }
 
     private SimpleTelegramClient botClient() {
-        return applicationContext.getBean("botClient", SimpleTelegramClient.class);
+        return ctx.getBean("botClient", SimpleTelegramClient.class);
     }
 
     /** Called for buttons on regular (non-via-bot) messages — userbot side. */
@@ -78,11 +79,9 @@ public class CallbackDispatcher {
         log.info("Received inline callback: payload='{}' inlineMessageId='{}'", payload, inlineMessageId);
 
         if (payload.startsWith("del:")) {
-            // payload = "del:<resultId>"
             String resultId = payload.substring(4);
             handleDelete(callbackQuery.id, resultId);
         } else if (payload.startsWith("exec:")) {
-            // payload = "exec:<resultId>:<cmd>"
             String rest = payload.substring(5);
             int colonIdx = rest.indexOf(':');
             if (colonIdx < 0) return;
@@ -90,7 +89,6 @@ public class CallbackDispatcher {
             String cmd = rest.substring(colonIdx + 1);
             handleRerun(callbackQuery.id, inlineMessageId, resultId, cmd);
         } else if (payload.startsWith("reeval:")) {
-            // payload = "reeval:<resultId>:<evalId>"
             String rest = payload.substring(7);
             int colonIdx = rest.indexOf(':');
             if (colonIdx < 0) return;
@@ -126,7 +124,7 @@ public class CallbackDispatcher {
     private void handleRerun(long callbackQueryId, String inlineMessageId, String resultId, String cmd) {
         botClient().send(new TdApi.AnswerCallbackQuery(callbackQueryId, "Re-running...", false, "", 0), resp -> {});
 
-        shellExecutors.execute(cmd).thenAccept(output -> {
+        shellExecutors.execute(cmd).subscribe(output -> {
             if (output == null || output.isEmpty()) output = "No output";
             String truncated = output.length() > 1000
                     ? output.substring(0, 1000) + "\n...(truncated)"
@@ -135,7 +133,6 @@ public class CallbackDispatcher {
             String html = "<b>Input:</b>\n<pre>" + escapeHtml(cmd) + "</pre>\n\n" +
                     "<b>Output:</b>\n<pre>" + escapeHtml(truncated) + "</pre>";
 
-            // Keep same resultId in buttons so Delete still works
             TdApi.ReplyMarkupInlineKeyboard keyboard = Exec.buildKeyboard(cmd, resultId);
 
             botClient().send(new TdApi.ParseTextEntities(html, new TdApi.TextParseModeHTML()), parseResult -> {
@@ -152,10 +149,7 @@ public class CallbackDispatcher {
                     }
                 });
             });
-        }).exceptionally(ex -> {
-            log.error("Re-run failed for cmd: {}", cmd, ex);
-            return null;
-        });
+        }, ex -> log.error("Re-run failed for cmd: {}", cmd, ex));
     }
 
     private void handleReeval(long callbackQueryId, String inlineMessageId, String resultId, String evalId) {
@@ -168,7 +162,7 @@ public class CallbackDispatcher {
         }
 
         // Must run off the TDLib thread — EvalContext.send() blocks waiting for a TDLib callback
-        CompletableFuture.runAsync(() -> {
+        Mono.<Void>fromRunnable(() -> {
             EvalContext.c = userBotClient;
             EvalContext.restore(entry.snapshot());
             String output;
@@ -197,10 +191,8 @@ public class CallbackDispatcher {
                     }
                 });
             });
-        }).exceptionally(ex -> {
-            log.error("Re-eval failed for evalId={}", evalId, ex);
-            return null;
-        });
+        }).subscribeOn(Schedulers.boundedElastic())
+          .subscribe(null, ex -> log.error("Re-eval failed for evalId={}", evalId, ex));
     }
 
     private String escapeHtml(String text) {

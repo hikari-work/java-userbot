@@ -12,13 +12,13 @@ import it.tdlight.jni.TdApi;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -26,7 +26,7 @@ public class Sticker {
 
     private static final int MAX_QUOTE_COUNT = 20;
     private static final int DEFAULT_QUOTE_COUNT = 1;
-    private static final String QUOTE_BACKGROUND_COLOR = "#1b1429";
+    private static final String DEFAULT_BG_COLOR = "#1b1429";
     private static final int PHOTO_DOWNLOAD_PRIORITY = 32;
 
     private final SimpleTelegramClient client;
@@ -50,7 +50,16 @@ public class Sticker {
         this.imgBBService = imgBBService;
     }
 
-    @UserBotCommand(commands = {"q", "quote"}, description = "Convert message to sticker", sudoOnly = true)
+    /**
+     * Usage: ,q [count] [--bg COLOR] [--scale N] [--format webp|png] [--emoji BRAND]
+     *
+     * Examples:
+     *   ,q                        → 1 message, default style
+     *   ,q 5                      → last 5 messages
+     *   ,q --bg random            → random background
+     *   ,q 3 --bg #ff6600 --scale 3 --emoji google
+     */
+    @UserBotCommand(commands = {"q", "quote"}, description = "Convert message to sticker. Args: [count] [--bg COLOR] [--scale N] [--format webp|png] [--emoji BRAND]", sudoOnly = true)
     public void sticker(TdApi.UpdateNewMessage message, String args) {
         log.info("Processing quote command");
 
@@ -59,15 +68,51 @@ public class Sticker {
 
         Optional<Long> replyMessageId = extractReplyMessageId(message);
         if (replyMessageId.isEmpty()) {
-            sendMessageUtils.sendMessage(chatId, "❌ Reply to a message to quote it.");
+            sendMessageUtils.sendMessage(chatId, "❌ Reply to a message to quote it.").subscribe();
             return;
         }
 
-        int messageCount = parseMessageCount(args);
-        log.info("Generating quote for {} message(s)", messageCount);
+        QuoteOptions options = parseArgs(args);
+        log.info("Generating quote: count={} bg={} scale={} format={} emoji={}",
+                options.count(), options.bgColor(), options.scale(), options.format(), options.emojiBrand());
 
-        processQuoteGeneration(chatId, commandMsgId, replyMessageId.get(), messageCount);
+        processQuoteGeneration(chatId, commandMsgId, replyMessageId.get(), options);
     }
+
+    // ── Arg parsing ─────────────────────────────────────────────────────────
+
+    private record QuoteOptions(int count, String bgColor, Float scale, String format, String emojiBrand) {}
+
+    private QuoteOptions parseArgs(String args) {
+        String[] tokens = args.trim().split("\\s+");
+        int count = DEFAULT_QUOTE_COUNT;
+        String bgColor = DEFAULT_BG_COLOR;
+        Float scale = null;
+        String format = "webp";
+        String emojiBrand = null;
+
+        for (int i = 0; i < tokens.length; i++) {
+            String t = tokens[i];
+            switch (t) {
+                case "--bg", "-bg" -> { if (i + 1 < tokens.length) bgColor = tokens[++i]; }
+                case "--scale", "-scale" -> {
+                    if (i + 1 < tokens.length) {
+                        try { scale = Float.parseFloat(tokens[++i]); } catch (NumberFormatException ignored) {}
+                    }
+                }
+                case "--format", "-format" -> { if (i + 1 < tokens.length) format = tokens[++i]; }
+                case "--emoji", "-emoji" -> { if (i + 1 < tokens.length) emojiBrand = tokens[++i]; }
+                default -> {
+                    if (t.matches("\\d+")) {
+                        count = Math.min(Integer.parseInt(t), MAX_QUOTE_COUNT);
+                    }
+                }
+            }
+        }
+        return new QuoteOptions(count, bgColor, scale, format, emojiBrand);
+    }
+
+    // ── Flow ─────────────────────────────────────────────────────────────────
 
     private Optional<Long> extractReplyMessageId(TdApi.UpdateNewMessage message) {
         if (message.message.replyTo instanceof TdApi.MessageReplyToMessage reply) {
@@ -76,102 +121,82 @@ public class Sticker {
         return Optional.empty();
     }
 
-    private int parseMessageCount(String args) {
-        String[] tokens = args.trim().split("\\s+");
-        if (tokens.length > 0 && tokens[0].matches("\\d+")) {
-            int count = Integer.parseInt(tokens[0]);
-            return Math.min(count, MAX_QUOTE_COUNT);
-        }
-        return DEFAULT_QUOTE_COUNT;
-    }
-
-    private void processQuoteGeneration(long chatId, long commandMsgId, long replyMessageId, int messageCount) {
-        String statusText = String.format("🎨 <b>Processing %d messages...</b>", messageCount);
+    private void processQuoteGeneration(long chatId, long commandMsgId, long replyMessageId, QuoteOptions options) {
+        String statusText = String.format("🎨 <b>Processing %d message(s)...</b>", options.count());
 
         sendMessageUtils.sendMessage(chatId, commandMsgId, statusText)
-                .thenAccept(statusMsg -> {
-                    int offset = -(messageCount - 1);
-                    fetchAndProcessMessages(chatId, replyMessageId, statusMsg.id, messageCount, offset);
-                })
-                .exceptionally(ex -> {
-                    log.error("Failed to send status message", ex);
-                    return null;
-                });
+                .subscribe(statusMsg -> {
+                    int offset = -(options.count() - 1);
+                    fetchAndProcessMessages(chatId, commandMsgId, replyMessageId, statusMsg.id, options, offset);
+                }, ex -> log.error("Failed to send status message", ex));
     }
 
-    private void fetchAndProcessMessages(long chatId, long replyMessageId, long statusMsgId,
-                                         int messageCount, int offset) {
-        chatHistory.getMessages(chatId, messageCount, offset, replyMessageId)
-                .thenAccept(history -> {
+    private void fetchAndProcessMessages(long chatId, long commandMsgId, long replyMessageId, long statusMsgId,
+                                         QuoteOptions options, int offset) {
+        chatHistory.getMessages(chatId, options.count(), offset, replyMessageId)
+                .subscribe(history -> {
                     if (history.totalCount == 0) {
-                        sendMessageUtils.sendMessage(chatId, "❌ No messages found.");
-                        deleteStatusMessage(chatId, statusMsgId);
+                        sendMessageUtils.sendMessage(chatId, "❌ No messages found.").subscribe();
+                        deleteMessages(chatId, statusMsgId, commandMsgId);
                         return;
                     }
-
-                    List<TdApi.Message> sortedMessages = sortMessagesByDate(history.messages);
-                    log.info("Processing {} messages", sortedMessages.size());
-
-                    convertMessagesToQuotly(chatId, replyMessageId, statusMsgId, sortedMessages);
-                })
-                .exceptionally(ex -> {
+                    List<TdApi.Message> sorted = sortMessagesByDate(history.messages);
+                    log.info("Processing {} messages", sorted.size());
+                    convertMessagesToQuotly(chatId, commandMsgId, replyMessageId, statusMsgId, sorted, options);
+                }, ex -> {
                     log.error("Failed to fetch messages", ex);
-                    sendMessageUtils.sendMessage(chatId, "❌ Failed to fetch messages.");
-                    deleteStatusMessage(chatId, statusMsgId);
-                    return null;
+                    sendMessageUtils.sendMessage(chatId, "❌ Failed to fetch messages: " + ex.getMessage()).subscribe();
+                    deleteMessages(chatId, statusMsgId, commandMsgId);
                 });
     }
 
     private List<TdApi.Message> sortMessagesByDate(TdApi.Message[] messages) {
-        List<TdApi.Message> messageList = new ArrayList<>(Arrays.asList(messages));
-        messageList.sort(Comparator.comparingLong(m -> m.id));
-        return messageList;
+        List<TdApi.Message> list = new ArrayList<>(Arrays.asList(messages));
+        list.sort(Comparator.comparingLong(m -> m.id));
+        return list;
     }
 
-    private void convertMessagesToQuotly(long chatId, long replyMessageId, long statusMsgId,
-                                         List<TdApi.Message> messages) {
-        List<CompletableFuture<QuotlyRequest.QuotlyMessage>> futures = messages.stream()
-                .map(this::convertToQuotlyMessage)
-                .toList();
-
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                .thenRun(() -> {
-                    List<QuotlyRequest.QuotlyMessage> quotlyMessages = futures.stream()
-                            .map(CompletableFuture::join)
-                            .collect(Collectors.toList());
-
-                    generateAndSendSticker(chatId, replyMessageId, statusMsgId, quotlyMessages);
-                })
-                .exceptionally(ex -> {
-                    log.error("Failed to process messages", ex);
-                    sendMessageUtils.sendMessage(chatId, "❌ Error processing messages: " + ex.getMessage());
-                    deleteStatusMessage(chatId, statusMsgId);
-                    return null;
-                });
+    private void convertMessagesToQuotly(long chatId, long commandMsgId, long replyMessageId, long statusMsgId,
+                                         List<TdApi.Message> messages, QuoteOptions options) {
+        Flux.fromIterable(messages)
+                .flatMap(this::convertToQuotlyMessage)
+                .collectList()
+                .subscribe(
+                        quotlyMessages -> generateAndSendSticker(chatId, commandMsgId, replyMessageId, statusMsgId, quotlyMessages, options),
+                        ex -> {
+                            log.error("Failed to process messages", ex);
+                            sendMessageUtils.sendMessage(chatId, "❌ Error processing messages: " + ex.getMessage()).subscribe();
+                            deleteMessages(chatId, statusMsgId, commandMsgId);
+                        }
+                );
     }
 
-    private CompletableFuture<QuotlyRequest.QuotlyMessage> convertToQuotlyMessage(TdApi.Message message) {
-        CompletableFuture<QuotlyRequest.QuotlyMessage> future = new CompletableFuture<>();
+    // ── Message → QuotlyMessage conversion ──────────────────────────────────
 
+    private Mono<QuotlyRequest.QuotlyMessage> convertToQuotlyMessage(TdApi.Message message) {
         long senderId = extractSenderId(message);
-        String messageText = extractMessageText(message.content);
+        TextContent textContent = extractTextContent(message.content);
 
-        getUser.getUser(senderId).thenAccept(user -> {
-            String userName = buildUserName(user);
-            TdApi.File photoFile = extractUserPhoto(user);
+        return getUser.getUser(senderId)
+                .flatMap(user -> {
+                    String userName = buildUserName(user);
+                    TdApi.File photoFile = extractUserPhoto(user);
 
-            if (photoFile != null) {
-                processWithPhoto(future, senderId, userName, messageText, photoFile);
-            } else {
-                future.complete(createQuotlyMessage(senderId, userName, messageText, null));
-            }
-        }).exceptionally(ex -> {
-            log.warn("Failed to get user info for sender {}, using defaults", senderId, ex);
-            future.complete(createQuotlyMessage(senderId, "Unknown User", messageText, null));
-            return null;
-        });
+                    QuotlyRequest.QuotlyMessage.QuotlyMessageBuilder msgBuilder = QuotlyRequest.QuotlyMessage.builder()
+                            .text(textContent.text())
+                            .entities(textContent.entities())
+                            .avatar(true);
 
-        return future;
+                    applyMediaContent(message.content, msgBuilder);
+                    applyReplyContext(message, msgBuilder);
+
+                    if (photoFile != null) {
+                        return processWithPhoto(senderId, userName, msgBuilder, photoFile);
+                    } else {
+                        return Mono.just(msgBuilder.from(buildSender(senderId, userName, null)).build());
+                    }
+                })
+                .onErrorReturn(buildFallbackMessage(senderId, textContent));
     }
 
     private long extractSenderId(TdApi.Message message) {
@@ -183,9 +208,7 @@ public class Sticker {
 
     private String buildUserName(TdApi.User user) {
         StringBuilder name = new StringBuilder(user.firstName);
-        if (!user.lastName.isEmpty()) {
-            name.append(" ").append(user.lastName);
-        }
+        if (!user.lastName.isEmpty()) name.append(" ").append(user.lastName);
         return name.toString();
     }
 
@@ -193,53 +216,74 @@ public class Sticker {
         return (user.profilePhoto != null) ? user.profilePhoto.small : null;
     }
 
-    private void processWithPhoto(CompletableFuture<QuotlyRequest.QuotlyMessage> future,
-                                  long senderId, String userName, String messageText,
-                                  TdApi.File photoFile) {
-        downloadAndUploadPhoto(photoFile)
-                .thenAccept(photoUrl -> {
-                    if (photoUrl.isPresent()) {
-                        QuotlyRequest.QuotlyPhoto photo = QuotlyRequest.QuotlyPhoto.builder()
-                                .url(photoUrl.get())
-                                .build();
-                        future.complete(createQuotlyMessage(senderId, userName, messageText, photo));
-                    } else {
-                        future.complete(createQuotlyMessage(senderId, userName, messageText, null));
-                    }
-                })
-                .exceptionally(ex -> {
-                    log.warn("Failed to process photo, creating message without photo", ex);
-                    future.complete(createQuotlyMessage(senderId, userName, messageText, null));
-                    return null;
-                });
+    private QuotlyRequest.QuotlySender buildSender(long id, String name, QuotlyRequest.QuotlyPhoto photo) {
+        return QuotlyRequest.QuotlySender.builder()
+                .id(id)
+                .name(name)
+                .photo(photo)
+                .build();
     }
 
-    private CompletableFuture<Optional<String>> downloadAndUploadPhoto(TdApi.File photoFile) {
-        CompletableFuture<Optional<String>> future = new CompletableFuture<>();
+    private QuotlyRequest.QuotlyMessage buildFallbackMessage(long senderId, TextContent content) {
+        return QuotlyRequest.QuotlyMessage.builder()
+                .text(content.text())
+                .entities(content.entities())
+                .avatar(true)
+                .from(buildSender(senderId, "Unknown User", null))
+                .build();
+    }
 
-        client.send(new TdApi.DownloadFile(photoFile.id, PHOTO_DOWNLOAD_PRIORITY, 0, 0, true),
-                response -> {
+    private void applyMediaContent(TdApi.MessageContent content,
+                                   QuotlyRequest.QuotlyMessage.QuotlyMessageBuilder builder) {
+        if (content instanceof TdApi.MessageSticker sticker) {
+            builder.mediaType("sticker");
+        }
+    }
+
+    private void applyReplyContext(TdApi.Message message,
+                                   QuotlyRequest.QuotlyMessage.QuotlyMessageBuilder builder) {
+        if (!(message.replyTo instanceof TdApi.MessageReplyToMessage replyTo)) return;
+        if (replyTo.content instanceof TdApi.MessageText replyText) {
+            builder.replyMessage(QuotlyRequest.QuotlyReplyMessage.builder()
+                    .text(replyText.text.text)
+                    .entities(mapEntities(replyText.text))
+                    .build());
+        }
+    }
+
+    private Mono<QuotlyRequest.QuotlyMessage> processWithPhoto(long senderId, String userName,
+                                                               QuotlyRequest.QuotlyMessage.QuotlyMessageBuilder msgBuilder,
+                                                               TdApi.File photoFile) {
+        return downloadAndUploadPhoto(photoFile)
+                .map(photoUrl -> {
+                    QuotlyRequest.QuotlyPhoto photo = photoUrl.map(url ->
+                            QuotlyRequest.QuotlyPhoto.builder().url(url).build()
+                    ).orElse(null);
+                    return msgBuilder.from(buildSender(senderId, userName, photo)).build();
+                })
+                .onErrorReturn(msgBuilder.from(buildSender(senderId, userName, null)).build());
+    }
+
+    private Mono<Optional<String>> downloadAndUploadPhoto(TdApi.File photoFile) {
+        return Mono.<Optional<String>>create(sink ->
+                client.send(new TdApi.DownloadFile(photoFile.id, PHOTO_DOWNLOAD_PRIORITY, 0, 0, true), response -> {
                     if (response.isError()) {
-                        future.complete(Optional.empty());
+                        sink.success(Optional.empty());
                         return;
                     }
-
                     try {
-                        String photoPath = response.get().local.path;
-                        Optional<String> base64 = encodeFileToBase64(photoPath);
-
-                        if (base64.isPresent()) {
-                            uploadPhotoToImgBB(base64.get(), future);
-                        } else {
-                            future.complete(Optional.empty());
-                        }
+                        sink.success(encodeFileToBase64(response.get().local.path));
                     } catch (Exception ex) {
                         log.error("Error processing downloaded photo", ex);
-                        future.complete(Optional.empty());
+                        sink.success(Optional.empty());
                     }
-                });
-
-        return future;
+                })
+        ).flatMap(base64 -> {
+            if (base64.isEmpty()) return Mono.just(Optional.<String>empty());
+            return imgBBService.uploadImage(base64.get())
+                    .map(Optional::of)
+                    .onErrorReturn(Optional.empty());
+        });
     }
 
     private Optional<String> encodeFileToBase64(String filePath) {
@@ -255,109 +299,144 @@ public class Sticker {
         return Optional.empty();
     }
 
-    private void uploadPhotoToImgBB(String base64, CompletableFuture<Optional<String>> future) {
-        imgBBService.uploadImage(base64)
-                .subscribe(
-                        imgUrl -> future.complete(Optional.of(imgUrl)),
-                        error -> {
-                            log.error("Failed to upload image to ImgBB", error);
-                            future.complete(Optional.empty());
-                        }
-                );
+    // ── Entity mapping ───────────────────────────────────────────────────────
+
+    private record TextContent(String text, List<QuotlyRequest.QuotlyEntity> entities) {}
+
+    private TextContent extractTextContent(TdApi.MessageContent content) {
+        return switch (content) {
+            case TdApi.MessageText mt -> new TextContent(mt.text.text, mapEntities(mt.text));
+            case TdApi.MessagePhoto ignored -> new TextContent("📷 Photo", List.of());
+            case TdApi.MessageSticker ignored -> new TextContent("🧩 Sticker", List.of());
+            case TdApi.MessageVideo ignored -> new TextContent("🎥 Video", List.of());
+            case TdApi.MessageVoiceNote ignored -> new TextContent("🎤 Voice Note", List.of());
+            case TdApi.MessageAudio ignored -> new TextContent("🎵 Audio", List.of());
+            case TdApi.MessageDocument ignored -> new TextContent("📄 Document", List.of());
+            default -> new TextContent("Unsupported Media", List.of());
+        };
     }
 
-    private QuotlyRequest.QuotlyMessage createQuotlyMessage(long senderId, String userName,
-                                                            String text, QuotlyRequest.QuotlyPhoto photo) {
-        QuotlyRequest.QuotlySender.QuotlySenderBuilder senderBuilder = QuotlyRequest.QuotlySender.builder()
-                .id(senderId)
-                .name(userName);
+    private List<QuotlyRequest.QuotlyEntity> mapEntities(TdApi.FormattedText formattedText) {
+        if (formattedText.entities == null || formattedText.entities.length == 0) return List.of();
 
-        if (photo != null) {
-            senderBuilder.photo(photo);
+        List<QuotlyRequest.QuotlyEntity> result = new ArrayList<>();
+        for (TdApi.TextEntity entity : formattedText.entities) {
+            String type = mapEntityType(entity.type);
+            if (type == null) continue;
+
+            QuotlyRequest.QuotlyEntity.QuotlyEntityBuilder builder = QuotlyRequest.QuotlyEntity.builder()
+                    .type(type)
+                    .offset(entity.offset)
+                    .length(entity.length);
+
+            if (entity.type instanceof TdApi.TextEntityTypeTextUrl textUrl) builder.url(textUrl.url);
+            if (entity.type instanceof TdApi.TextEntityTypePreCode preCode) builder.language(preCode.language);
+
+            result.add(builder.build());
         }
-
-        return QuotlyRequest.QuotlyMessage.builder()
-                .text(text)
-                .avatar(true)
-                .from(senderBuilder.build())
-                .build();
+        return result;
     }
 
-    private void generateAndSendSticker(long chatId, long replyMessageId, long statusMsgId,
-                                        List<QuotlyRequest.QuotlyMessage> messages) {
-        QuotlyRequest request = QuotlyRequest.builder()
-                .type("quote")
-                .format("webp")
-                .backgroundColor(QUOTE_BACKGROUND_COLOR)
-                .messages(messages)
-                .build();
+    private String mapEntityType(TdApi.TextEntityType type) {
+        return switch (type) {
+            case TdApi.TextEntityTypeBold ignored -> "bold";
+            case TdApi.TextEntityTypeItalic ignored -> "italic";
+            case TdApi.TextEntityTypeUnderline ignored -> "underline";
+            case TdApi.TextEntityTypeStrikethrough ignored -> "strikethrough";
+            case TdApi.TextEntityTypeCode ignored -> "code";
+            case TdApi.TextEntityTypePre ignored -> "pre";
+            case TdApi.TextEntityTypePreCode ignored -> "pre";
+            case TdApi.TextEntityTypeTextUrl ignored -> "text_link";
+            default -> null;
+        };
+    }
 
+    // ── Sticker generation and sending ───────────────────────────────────────
+
+    private void generateAndSendSticker(long chatId, long commandMsgId, long replyMessageId, long statusMsgId,
+                                        List<QuotlyRequest.QuotlyMessage> messages, QuoteOptions options) {
+        QuotlyRequest.QuotlyRequestBuilder requestBuilder = QuotlyRequest.builder()
+                .type("quote")
+                .format(options.format())
+                .backgroundColor(options.bgColor())
+                .messages(messages);
+
+        if (options.scale() != null) requestBuilder.scale(options.scale());
+        if (options.emojiBrand() != null) requestBuilder.emojiBrand(options.emojiBrand());
+
+        QuotlyRequest request = requestBuilder.build();
         log.info("Sending request to Quotly API with {} messages", messages.size());
 
         quotlyService.generateStickerAsync(request)
                 .subscribe(
-                        stickerBytes -> sendStickerToChat(chatId, replyMessageId, statusMsgId, stickerBytes),
-                        error -> handleStickerGenerationError(chatId, statusMsgId, error)
+                        stickerBytes -> sendStickerToChat(chatId, commandMsgId, replyMessageId, statusMsgId, stickerBytes),
+                        error -> handleStickerGenerationError(chatId, commandMsgId, statusMsgId, error)
                 );
     }
 
-    private void sendStickerToChat(long chatId, long replyMessageId, long statusMsgId, byte[] stickerBytes) {
+    private void sendStickerToChat(long chatId, long commandMsgId, long replyMessageId,
+                                   long statusMsgId, byte[] stickerBytes) {
         try {
-            File tempFile = createTempStickerFile(stickerBytes);
+            File tempFile = File.createTempFile("sticker_", ".webp");
+            Files.write(tempFile.toPath(), stickerBytes);
 
-            TdApi.InputMessageSticker sticker = new TdApi.InputMessageSticker();
-            sticker.sticker = new TdApi.InputFileLocal(tempFile.getAbsolutePath());
+            // PreliminaryUploadFile gives TDLib a proper upload context.
+            // Using InputFileLocal directly causes "Can't resend local file" if TDLib needs to retry.
+            TdApi.PreliminaryUploadFile upload = new TdApi.PreliminaryUploadFile(
+                    new TdApi.InputFileLocal(tempFile.getAbsolutePath()),
+                    new TdApi.FileTypeSticker(),
+                    PHOTO_DOWNLOAD_PRIORITY
+            );
 
-            TdApi.InputMessageReplyToMessage replyTo = new TdApi.InputMessageReplyToMessage(replyMessageId, null, 0);
+            client.send(upload, uploadResult -> {
+                if (uploadResult.isError()) {
+                    log.error("Sticker upload failed: {}", uploadResult.getError().message);
+                    sendMessageUtils.sendMessage(chatId, "❌ Upload failed: " + uploadResult.getError().message).subscribe();
+                    deleteMessages(chatId, statusMsgId, commandMsgId);
+                    deleteTempFile(tempFile);
+                    return;
+                }
 
-            client.send(new TdApi.SendMessage(chatId, 0, replyTo, null, null, sticker), sent -> {
-                deleteStatusMessage(chatId, statusMsgId);
-                deleteTempFile(tempFile);
+                int fileId = uploadResult.get().id;
+                TdApi.InputMessageSticker sticker = new TdApi.InputMessageSticker();
+                sticker.sticker = new TdApi.InputFileId(fileId);
+
+                TdApi.InputMessageReplyToMessage replyTo = new TdApi.InputMessageReplyToMessage(replyMessageId, null, 0);
+                client.send(new TdApi.SendMessage(chatId, 0, replyTo, null, null, sticker), sent -> {
+                    client.send(new TdApi.CancelPreliminaryUploadFile(fileId), r -> {});
+                    deleteMessages(chatId, statusMsgId, commandMsgId);
+                    if (sent.isError()) {
+                        log.error("Failed to send sticker: {}", sent.getError().message);
+                    } else {
+                        log.info("Sticker sent to chat {}", chatId);
+                    }
+                    deleteTempFile(tempFile);
+                });
             });
 
-            log.info("Sticker sent successfully to chat {}", chatId);
         } catch (IOException ex) {
-            log.error("Failed to create or send sticker file", ex);
-            sendMessageUtils.sendMessage(chatId, "❌ Failed to save sticker file.");
-            deleteStatusMessage(chatId, statusMsgId);
+            log.error("Failed to create sticker temp file", ex);
+            sendMessageUtils.sendMessage(chatId, "❌ Failed to save sticker file.").subscribe();
+            deleteMessages(chatId, statusMsgId, commandMsgId);
         }
     }
 
-    private File createTempStickerFile(byte[] stickerBytes) throws IOException {
-        File tempFile = File.createTempFile("sticker_", ".webp");
-        Files.write(tempFile.toPath(), stickerBytes);
-        return tempFile;
-    }
-
-    private void handleStickerGenerationError(long chatId, long statusMsgId, Throwable error) {
+    private void handleStickerGenerationError(long chatId, long commandMsgId, long statusMsgId, Throwable error) {
         log.error("Failed to generate sticker", error);
-        sendMessageUtils.sendMessage(chatId, "❌ Failed to generate sticker: " + error.getMessage());
-        deleteStatusMessage(chatId, statusMsgId);
+        String msg = (error instanceof QuotlyRequestService.QuotlyException)
+                ? "❌ " + error.getMessage()
+                : "❌ Failed to generate sticker: " + error.getMessage();
+        sendMessageUtils.sendMessage(chatId, msg).subscribe();
+        deleteMessages(chatId, statusMsgId, commandMsgId);
     }
 
-    private void deleteStatusMessage(long chatId, long messageId) {
-        client.send(new TdApi.DeleteMessages(chatId, new long[]{messageId}, true));
+    private void deleteMessages(long chatId, long... messageIds) {
+        client.send(new TdApi.DeleteMessages(chatId, messageIds, true));
     }
 
     private void deleteTempFile(File file) {
-        if (file != null && file.exists()) {
-            boolean deleted = file.delete();
-            if (!deleted) {
-                log.warn("Failed to delete temp file: {}", file.getAbsolutePath());
-            }
+        if (file != null && file.exists() && !file.delete()) {
+            log.warn("Failed to delete temp file: {}", file.getAbsolutePath());
         }
-    }
-
-    private String extractMessageText(TdApi.MessageContent content) {
-        return switch (content) {
-            case TdApi.MessageText text -> text.text.text;
-            case TdApi.MessagePhoto ignored -> "📷 Photo";
-            case TdApi.MessageSticker ignored -> "🧩 Sticker";
-            case TdApi.MessageVideo ignored -> "🎥 Video";
-            case TdApi.MessageVoiceNote ignored -> "🎤 Voice Note";
-            case TdApi.MessageAudio ignored -> "🎵 Audio";
-            case TdApi.MessageDocument ignored -> "📄 Document";
-            default -> "Unsupported Media";
-        };
     }
 }

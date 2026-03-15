@@ -2,7 +2,9 @@ package com.yann.demosping.bot.inline;
 
 import com.yann.demosping.bot.manager.InlineQuery;
 import com.yann.demosping.service.ExecResultCache;
+import com.yann.demosping.service.OutputPaste;
 import com.yann.demosping.service.ShellExecutors;
+import com.yann.demosping.utils.Keyboard;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.extern.slf4j.Slf4j;
@@ -16,13 +18,16 @@ public class Exec {
     private final ShellExecutors shellExecutors;
     private final ExecResultCache execResultCache;
     private final SimpleTelegramClient client;
+    private final OutputPaste outputPaste;
 
     public Exec(ShellExecutors shellExecutors,
                 ExecResultCache execResultCache,
-                @Qualifier("botClient") SimpleTelegramClient client) {
+                @Qualifier("botClient") SimpleTelegramClient client,
+                OutputPaste outputPaste) {
         this.shellExecutors = shellExecutors;
         this.execResultCache = execResultCache;
         this.client = client;
+        this.outputPaste = outputPaste;
     }
 
     @InlineQuery(commands = "exec", regex = "^exec.*")
@@ -36,31 +41,44 @@ public class Exec {
         if (cached != null) {
             buildAndAnswer(query.id, resultId, cmd, cached);
         } else {
-            // Fallback for direct inline usage (not triggered by ExecPlugin)
             shellExecutors.execute(cmd)
-                    .thenAccept(result -> buildAndAnswer(query.id, resultId, cmd, result))
-                    .exceptionally(ex -> {
-                        log.error("Exec inline error for cmd: {}", cmd, ex);
-                        return null;
-                    });
+                    .subscribe(
+                            result -> buildAndAnswer(query.id, resultId, cmd, result),
+                            ex -> log.error("Exec inline error for cmd: {}", cmd, ex)
+                    );
         }
     }
 
     private void buildAndAnswer(long queryId, String resultId, String cmd, String output) {
         if (output == null || output.isEmpty()) output = "No output";
-        String truncated = output.length() > 1000
-                ? output.substring(0, 1000) + "\n...(truncated)"
-                : output;
+        final String finalOutput = output;
 
+        if (output.length() > 100) {
+            String preview = output.substring(0, 100) + "...";
+            outputPaste.post(output).subscribe(
+                    pasteUrl -> buildMessage(queryId, resultId, cmd, preview, pasteUrl),
+                    err -> {
+                        log.error("paste.rs upload failed for cmd: {}", cmd, err);
+                        buildMessage(queryId, resultId, cmd, preview, null);
+                    }
+            );
+        } else {
+            buildMessage(queryId, resultId, cmd, finalOutput, null);
+        }
+    }
+
+    private void buildMessage(long queryId, String resultId, String cmd, String displayOutput, String pasteUrl) {
         String html = "<b>Input:</b>\n<pre>" + escapeHtml(cmd) + "</pre>\n\n" +
-                "<b>Output:</b>\n<pre>" + escapeHtml(truncated) + "</pre>";
+                "<b>Output:</b>\n<pre>" + escapeHtml(displayOutput) + "</pre>";
 
         client.send(new TdApi.ParseTextEntities(html, new TdApi.TextParseModeHTML()), parseResult -> {
             TdApi.FormattedText formattedText = parseResult.isError()
                     ? new TdApi.FormattedText(html, new TdApi.TextEntity[0])
                     : parseResult.get();
 
-            TdApi.ReplyMarkupInlineKeyboard keyboard = buildKeyboard(cmd, resultId);
+            TdApi.ReplyMarkupInlineKeyboard keyboard = pasteUrl != null
+                    ? buildPasteKeyboard(resultId, pasteUrl)
+                    : buildKeyboard(cmd, resultId);
 
             TdApi.InputMessageText inputMessage = new TdApi.InputMessageText();
             inputMessage.text = formattedText;
@@ -89,26 +107,21 @@ public class Exec {
     }
 
     /**
-     * Build the inline keyboard.
      * Delete payload: "del:<resultId>"
-     * Re-run payload: "exec:<resultId>:<cmd>"  (split on ":" with limit 2 after stripping "exec:")
+     * Re-run payload: "exec:<resultId>:<cmd>"
      */
     public static TdApi.ReplyMarkupInlineKeyboard buildKeyboard(String cmd, String resultId) {
-        TdApi.InlineKeyboardButton deleteBtn = new TdApi.InlineKeyboardButton();
-        deleteBtn.text = "🗑 Delete";
-        TdApi.InlineKeyboardButtonTypeCallback delCb = new TdApi.InlineKeyboardButtonTypeCallback();
-        delCb.data = ("del:" + resultId).getBytes();
-        deleteBtn.type = delCb;
+        return Keyboard.of(new TdApi.InlineKeyboardButton[]{
+                Keyboard.callbackBtn("🗑 Delete", "del:" + resultId),
+                Keyboard.callbackBtn("🔄 Re-run", "exec:" + resultId + ":" + cmd)
+        });
+    }
 
-        TdApi.InlineKeyboardButton rerunBtn = new TdApi.InlineKeyboardButton();
-        rerunBtn.text = "🔄 Re-run";
-        TdApi.InlineKeyboardButtonTypeCallback rerunCb = new TdApi.InlineKeyboardButtonTypeCallback();
-        rerunCb.data = ("exec:" + resultId + ":" + cmd).getBytes();
-        rerunBtn.type = rerunCb;
-
-        TdApi.ReplyMarkupInlineKeyboard keyboard = new TdApi.ReplyMarkupInlineKeyboard();
-        keyboard.rows = new TdApi.InlineKeyboardButton[][]{{deleteBtn, rerunBtn}};
-        return keyboard;
+    private static TdApi.ReplyMarkupInlineKeyboard buildPasteKeyboard(String resultId, String pasteUrl) {
+        return Keyboard.of(new TdApi.InlineKeyboardButton[]{
+                Keyboard.callbackBtn("🗑 Delete", "del:" + resultId),
+                Keyboard.urlBtn("📋 Full output", pasteUrl)
+        });
     }
 
     private String escapeHtml(String text) {

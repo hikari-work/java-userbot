@@ -191,7 +191,8 @@ public class CoomerPlugin {
 
     private void sendText(long chatId, String text) {
         parseTextEntitiesUtils.formatText(text, new TdApi.TextParseModeMarkdown())
-                        .thenAccept(parse -> sendMessageUtils.sendMessage(chatId, parse));
+                .flatMap(parse -> sendMessageUtils.sendMessage(chatId, parse))
+                .subscribe();
     }
 
     private void sendFile(long chatId, String content, String fileName) {
@@ -207,7 +208,7 @@ public class CoomerPlugin {
                     false,
                     new TdApi.FormattedText("📝 " + fileName, new TdApi.TextEntity[0])
             );
-            sendMessageUtils.sendMessage(chatId, documentContent);
+            sendMessageUtils.sendMessage(chatId, documentContent).subscribe();
             tempFile.deleteOnExit();
 
         } catch (IOException e) {

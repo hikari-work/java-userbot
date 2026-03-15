@@ -2,7 +2,6 @@ package com.yann.demosping.configuration;
 
 import com.yann.demosping.bot.manager.CallbackDispatcher;
 import com.yann.demosping.bot.manager.InlineBotDispatcher;
-import com.yann.demosping.dto.GcastConfig;
 import com.yann.demosping.service.GcastStateService;
 import it.tdlight.Log;
 import it.tdlight.Slf4JLogMessageHandler;
@@ -44,16 +43,21 @@ public class BotConfiguration {
     public AuthenticationSupplier<?> supplier() {
         return AuthenticationSupplier.bot(botToken);
     }
+    @Bean("botFactory")
+    public SimpleTelegramClientFactory botFactory() {
+        return new SimpleTelegramClientFactory();
+    }
+
     @Bean("botClient")
     public SimpleTelegramClient runner(@Qualifier("botSupplier") AuthenticationSupplier<?> supplier,
                                        @Qualifier("bot") TDLibSettings settings,
+                                       @Qualifier("botFactory") SimpleTelegramClientFactory factory,
                                        InlineBotDispatcher inlineBotDispatcher,
                                        CallbackDispatcher callbackDispatcher,
                                        GcastStateService gcastStateService) {
         log.info("Creating Client");
-        SimpleTelegramClientFactory simpleTelegramClientFactory = new SimpleTelegramClientFactory();
         log.info("Building Client");
-        SimpleTelegramClientBuilder builder = simpleTelegramClientFactory.builder(settings);
+        SimpleTelegramClientBuilder builder = factory.builder(settings);
 
         log.info("Bot Building");
 
@@ -64,11 +68,10 @@ public class BotConfiguration {
                     result.query, result.resultId, result.inlineMessageId);
             if (result.resultId.startsWith("wizard_")) {
                 String sid = result.resultId.substring(7);
-                GcastConfig cfg = gcastStateService.getSession(sid);
-                if (cfg != null) {
+                gcastStateService.getSession(sid).subscribe(cfg -> {
                     cfg.controlInlineMessageId = result.inlineMessageId;
-                    gcastStateService.saveSession(sid, cfg);
-                }
+                    gcastStateService.saveSession(sid, cfg).subscribe();
+                });
             }
         });
 

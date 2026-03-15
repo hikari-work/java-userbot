@@ -13,7 +13,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.lang.reflect.Field;
-
 import java.util.UUID;
 
 @Slf4j
@@ -45,12 +44,12 @@ public class GcastPlugin {
         long msgId = message.message.id;
 
         if (message.message.replyTo == null) {
-            editMessage.editMessage(chatId, msgId, "❌ Reply ke pesan yang ingin dibroadcast!");
+            editMessage.editMessage(chatId, msgId, "❌ Reply ke pesan yang ingin dibroadcast!").subscribe();
             return;
         }
 
         if (!(message.message.replyTo instanceof TdApi.MessageReplyToMessage replyTo)) {
-            editMessage.editMessage(chatId, msgId, "❌ Reply ke pesan yang ingin dibroadcast!");
+            editMessage.editMessage(chatId, msgId, "❌ Reply ke pesan yang ingin dibroadcast!").subscribe();
             return;
         }
 
@@ -65,7 +64,7 @@ public class GcastPlugin {
         config.controlChatId = chatId;
         config.step = "DELAY";
 
-        editMessage.editMessage(chatId, msgId, "📢 Mempersiapkan GCast...");
+        editMessage.editMessage(chatId, msgId, "📢 Mempersiapkan GCast...").subscribe();
 
         TdApi.GetInlineQueryResults getResults = new TdApi.GetInlineQueryResults();
         getResults.botUserId = botId;
@@ -97,8 +96,7 @@ public class GcastPlugin {
                     log.error("SendInlineQueryResultMessage failed: {}", sendResult.getError().message);
                     return;
                 }
-                // controlInlineMessageId will be captured from UpdateNewChosenInlineResult in BotConfiguration
-                stateService.saveSession(sid, config);
+                stateService.saveSession(sid, config).subscribe();
                 log.info("GCast session created via inline: sid={}", sid);
             });
         });
@@ -108,16 +106,16 @@ public class GcastPlugin {
     public void handleAddWhitelist(TdApi.UpdateNewMessage message, String args) {
         long chatId = message.message.chatId;
         long msgId = message.message.id;
-        stateService.addWhitelist(chatId);
-        editMessage.editMessage(chatId, msgId, "✅ Chat ditambahkan ke whitelist");
+        stateService.addWhitelist(chatId).subscribe();
+        editMessage.editMessage(chatId, msgId, "✅ Chat ditambahkan ke whitelist").subscribe();
     }
 
     @UserBotCommand(commands = {"addbl"}, description = "Tambahkan chat ini ke blacklist gcast", sudoOnly = true)
     public void handleAddBlacklist(TdApi.UpdateNewMessage message, String args) {
         long chatId = message.message.chatId;
         long msgId = message.message.id;
-        stateService.addBlacklist(chatId);
-        editMessage.editMessage(chatId, msgId, "✅ Chat ditambahkan ke blacklist");
+        stateService.addBlacklist(chatId).subscribe();
+        editMessage.editMessage(chatId, msgId, "✅ Chat ditambahkan ke blacklist").subscribe();
     }
 
     @UserBotCommand(commands = {"addlabel"}, description = "Tambahkan chat ini ke label gcast. Gunakan: ,addlabel <nama>", sudoOnly = true)
@@ -126,13 +124,13 @@ public class GcastPlugin {
         long msgId = message.message.id;
 
         if (args == null || args.isBlank()) {
-            editMessage.editMessage(chatId, msgId, "❌ Gunakan: ,addlabel <nama_label>");
+            editMessage.editMessage(chatId, msgId, "❌ Gunakan: ,addlabel <nama_label>").subscribe();
             return;
         }
 
         String labelName = args.trim();
-        stateService.addLabel(labelName, chatId);
-        editMessage.editMessage(chatId, msgId, "✅ Chat ditambahkan ke label: " + labelName);
+        stateService.addLabel(labelName, chatId).subscribe();
+        editMessage.editMessage(chatId, msgId, "✅ Chat ditambahkan ke label: " + labelName).subscribe();
     }
 
     @UserBotCommand(commands = {"cancelgcast"}, description = "Batalkan broadcast yang sedang berjalan. Gunakan: ,cancelgcast <sessionId>", sudoOnly = true)
@@ -141,13 +139,13 @@ public class GcastPlugin {
         long msgId = message.message.id;
 
         if (args == null || args.isBlank()) {
-            editMessage.editMessage(chatId, msgId, "❌ Gunakan: ,cancelgcast <sessionId>");
+            editMessage.editMessage(chatId, msgId, "❌ Gunakan: ,cancelgcast <sessionId>").subscribe();
             return;
         }
 
         String sessionId = args.trim();
         gcastService.cancelBroadcast(sessionId);
-        editMessage.editMessage(chatId, msgId, "⏹ Membatalkan broadcast: " + sessionId);
+        editMessage.editMessage(chatId, msgId, "⏹ Membatalkan broadcast: " + sessionId).subscribe();
     }
 
     private String extractResultId(TdApi.InlineQueryResult result) {

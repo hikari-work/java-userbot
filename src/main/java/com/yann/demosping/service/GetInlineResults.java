@@ -4,8 +4,7 @@ import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
-
-import java.util.concurrent.CompletableFuture;
+import reactor.core.publisher.Mono;
 
 @Component
 public class GetInlineResults {
@@ -16,14 +15,12 @@ public class GetInlineResults {
         this.client = client;
     }
 
-    public CompletableFuture<TdApi.InlineQueryResults> inlineQuery(long chatId, long botId, String args) {
-        CompletableFuture<TdApi.InlineQueryResults> inlineQueryFuture = new CompletableFuture<>();
-        client.send(
-                new TdApi.GetInlineQueryResults(botId, chatId, null, args, ""), result -> {
-                    if (result.isError()) inlineQueryFuture.completeExceptionally(new RuntimeException(result.getError().message));
-                    inlineQueryFuture.complete(result.get());
-                }
+    public Mono<TdApi.InlineQueryResults> inlineQuery(long chatId, long botId, String args) {
+        return Mono.create(sink ->
+                client.send(new TdApi.GetInlineQueryResults(botId, chatId, null, args, ""), result -> {
+                    if (result.isError()) sink.error(new RuntimeException(result.getError().message));
+                    else sink.success(result.get());
+                })
         );
-        return inlineQueryFuture;
     }
 }

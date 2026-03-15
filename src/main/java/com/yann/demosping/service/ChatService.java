@@ -5,12 +5,10 @@ import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
-
-import java.util.concurrent.CompletableFuture;
+import reactor.core.publisher.Mono;
 
 @Component
 public class ChatService {
-
 
     private final SimpleTelegramClient client;
 
@@ -18,17 +16,15 @@ public class ChatService {
         this.client = client;
     }
 
-    public CompletableFuture<TdApi.Chat> getChatInfo(long chatId) {
-        CompletableFuture<TdApi.Chat> getChatInfo = new CompletableFuture<>();
-        client.send(
-                new TdApi.GetChat(chatId), result -> {
+    public Mono<TdApi.Chat> getChatInfo(long chatId) {
+        return Mono.create(sink ->
+                client.send(new TdApi.GetChat(chatId), result -> {
                     if (result.isError()) {
-                        getChatInfo.completeExceptionally(new GetMessageException("Error Getting Chat", chatId, 0L));
+                        sink.error(new GetMessageException("Error Getting Chat", chatId, 0L));
+                    } else {
+                        sink.success(result.get());
                     }
-                    getChatInfo.complete(result.get());
-                }
+                })
         );
-        return getChatInfo;
     }
-
 }

@@ -50,34 +50,34 @@ public class Purge {
             case "purge" -> {
                 if (message.message.replyTo instanceof TdApi.MessageReplyToMessage replyTo) {
                     long replyMsgId = replyTo.messageId;
-                    client.send(new TdApi.GetChatHistory(chatId, commandMsgId, 0, 1000, false))
-                            .thenAccept(history -> {
-                                if (history.totalCount == 0) return;
-                                log.info("Total Count Message is {}", history.totalCount);
+                    client.send(new TdApi.GetChatHistory(chatId, commandMsgId, 0, 1000, false), result -> {
+                        if (result.isError()) {
+                            log.error("Purge error: {}", result.getError().message);
+                            return;
+                        }
+                        TdApi.Messages history = result.get();
+                        if (history.totalCount == 0) return;
+                        log.info("Total Count Message is {}", history.totalCount);
 
-                                List<TdApi.Message> messagesToDelete = new ArrayList<>();
-                                messagesToDelete.add(message.message);
+                        List<TdApi.Message> messagesToDelete = new ArrayList<>();
+                        messagesToDelete.add(message.message);
 
-                                boolean foundReply = false;
+                        boolean foundReply = false;
 
-                                for (TdApi.Message msg : history.messages) {
-                                    messagesToDelete.add(msg);
-                                    if (msg.id == replyMsgId) {
-                                        foundReply = true;
-                                        break;
-                                    }
-                                }
+                        for (TdApi.Message msg : history.messages) {
+                            messagesToDelete.add(msg);
+                            if (msg.id == replyMsgId) {
+                                foundReply = true;
+                                break;
+                            }
+                        }
 
-                                if (foundReply) {
-                                    deleteMessages(chatId, messagesToDelete);
-                                } else {
-                                    sendError(chatId, commandMsgId, "⚠️ Pesan yang di-reply terlalu lama (lebih dari 1000 pesan yang lalu).");
-                                }
-                            })
-                            .exceptionally(ex -> {
-                                log.error("Purge error", ex);
-                                return null;
-                            });
+                        if (foundReply) {
+                            deleteMessages(chatId, messagesToDelete);
+                        } else {
+                            sendError(chatId, commandMsgId, "⚠️ Pesan yang di-reply terlalu lama (lebih dari 1000 pesan yang lalu).");
+                        }
+                    });
                 } else {
                     sendError(chatId, commandMsgId, "❌ Reply pesan yang ingin di-purge.");
                 }
@@ -93,22 +93,26 @@ public class Purge {
 
                 if (count > 1000) count = 1000;
 
-                client.send(new TdApi.GetChatHistory(chatId, commandMsgId, 0, count, false))
-                        .thenAccept(history -> {
-                            List<TdApi.Message> myMessages = new ArrayList<>();
-                            myMessages.add(message.message);
+                client.send(new TdApi.GetChatHistory(chatId, commandMsgId, 0, count, false), result -> {
+                    if (result.isError()) {
+                        log.error("Purgeme error: {}", result.getError().message);
+                        return;
+                    }
+                    TdApi.Messages history = result.get();
+                    List<TdApi.Message> myMessages = new ArrayList<>();
+                    myMessages.add(message.message);
 
-                            for (TdApi.Message msg : history.messages) {
-                                if (msg.isOutgoing) {
-                                    myMessages.add(msg);
-                                }
-                            }
-                            log.info("My Message Count is {}", myMessages.size());
+                    for (TdApi.Message msg : history.messages) {
+                        if (msg.isOutgoing) {
+                            myMessages.add(msg);
+                        }
+                    }
+                    log.info("My Message Count is {}", myMessages.size());
 
-                            if (!myMessages.isEmpty()) {
-                                deleteMessages(chatId, myMessages);
-                            }
-                        });
+                    if (!myMessages.isEmpty()) {
+                        deleteMessages(chatId, myMessages);
+                    }
+                });
             }
 
             case "del" -> {
@@ -139,9 +143,8 @@ public class Purge {
     }
 
     private void sendError(long chatId, long replyToMsgId, String text) {
-        sendMessageUtils.sendMessage(chatId, replyToMsgId, text).exceptionally(ex -> {
-            globalTelegramExceptionHandler.handle(ex);
-            return null;
-        });
+        sendMessageUtils.sendMessage(chatId, replyToMsgId, text)
+                .doOnError(globalTelegramExceptionHandler::handle)
+                .subscribe();
     }
 }

@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Mono;
 
 @Slf4j
 @Order(1)
@@ -25,67 +26,69 @@ public class AfkInterceptor implements MessageInterceptor {
     private String userId;
 
     @Override
-    public boolean preHandle(TdApi.UpdateNewMessage message, String text) {
+    public Mono<Boolean> preHandle(TdApi.UpdateNewMessage message, String text) {
         boolean isOutgoing = message.message.isOutgoing;
 
         if (isOutgoing) {
-            if (moduleStateService.isAfk() && !isAfkStatusMessage(message)) {
-                disableAfk(message);
-                return false;
-            }
-            return true;
+            return moduleStateService.isAfk()
+                    .flatMap(afk -> {
+                        if (afk && !isAfkStatusMessage(message)) {
+                            return disableAfk(message).thenReturn(false);
+                        }
+                        return Mono.just(true);
+                    });
         }
 
-        if (moduleStateService.isAfk() && isMentionedOrDirectMessage(message)) {
-            sendAfkReply(message);
-            return false;
-        }
-
-        return true;
+        return moduleStateService.isAfk()
+                .flatMap(afk -> {
+                    if (afk && isMentionedOrDirectMessage(message)) {
+                        sendAfkReply(message);
+                        return Mono.just(false);
+                    }
+                    return Mono.just(true);
+                });
     }
 
     private boolean isMentionedOrDirectMessage(TdApi.UpdateNewMessage message) {
-        if (message.message.chatId > 0) {
-            return true;
-        }
+        if (message.message.chatId > 0) return true;
         if (message.message.content instanceof TdApi.MessageText textContent) {
             for (TdApi.TextEntity entity : textContent.text.entities) {
                 if (entity.type instanceof TdApi.TextEntityTypeMentionName mention) {
-                    if (mention.userId == Long.parseLong(userId)) {
-                        return true;
-                    }
+                    if (mention.userId == Long.parseLong(userId)) return true;
                 }
             }
         }
         return false;
     }
 
-    private void disableAfk(TdApi.UpdateNewMessage message) {
+    private Mono<Void> disableAfk(TdApi.UpdateNewMessage message) {
         long chatId = message.message.chatId;
-        String responseText = "<b>Back Online</b>\nWas AFK for: <code>" + moduleStateService.getAfkDuration() + "</code>";
-        sendMessageUtils.sendMessage(chatId, responseText)
-                .exceptionally(ex -> {
-                    exceptionHandler.handle(ex);
-                    return null;
-                });
-        moduleStateService.setAfk(false, "false");
+        return moduleStateService.getAfkDuration()
+                .flatMap(duration -> {
+                    String responseText = "<b>Back Online</b>\nWas AFK for: <code>" + duration + "</code>";
+                    return sendMessageUtils.sendMessage(chatId, responseText)
+                            .then(moduleStateService.setAfk(false, "false"));
+                })
+                .doOnError(exceptionHandler::handle)
+                .then();
     }
 
     private void sendAfkReply(TdApi.UpdateNewMessage message) {
         long chatId = message.message.chatId;
         long messageId = message.message.id;
-        String responseText = "<b>User is AFK</b>\nReason: " + moduleStateService.getAfkReason();
-        sendMessageUtils.sendMessage(chatId, messageId, responseText)
-                .exceptionally(ex -> {
-                    exceptionHandler.handle(ex);
-                    return null;
-                });
+        moduleStateService.getAfkReason()
+                .flatMap(reason -> {
+                    String responseText = "<b>User is AFK</b>\nReason: " + reason;
+                    return sendMessageUtils.sendMessage(chatId, messageId, responseText);
+                })
+                .doOnError(exceptionHandler::handle)
+                .subscribe();
     }
 
     private boolean isAfkStatusMessage(TdApi.UpdateNewMessage message) {
         if (message.message.content instanceof TdApi.MessageText textContent) {
-            String text = textContent.text.text;
-            return text.contains("Back Online") || text.contains("User is AFK");
+            String t = textContent.text.text;
+            return t.contains("Back Online") || t.contains("User is AFK");
         }
         return false;
     }

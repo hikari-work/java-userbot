@@ -39,28 +39,25 @@ public class Json {
         mapper.enable(SerializationFeature.INDENT_OUTPUT);
 
         if (update.message.replyTo instanceof TdApi.MessageReplyToMessage replyTo) {
-            messagesService.getMessage(chatId, replyTo.messageId, messageId).thenAcceptAsync(message -> {
-                String jsonString = getInfo(message);
-                String safeText = truncateSafe(jsonString);
-
-                editMessage.editMessage(chatId, messageId, "<code>" + safeText + "</code>");
-            }).exceptionally(ex -> {
-                globalTelegramExceptionHandler.handle(ex);
-                return null;
-            });
+            messagesService.getMessage(chatId, replyTo.messageId, messageId)
+                    .flatMap(message -> {
+                        String jsonString = getInfo(message);
+                        String safeText = truncateSafe(jsonString);
+                        return editMessage.editMessage(chatId, messageId, "<code>" + safeText + "</code>");
+                    })
+                    .doOnError(globalTelegramExceptionHandler::handle)
+                    .subscribe();
         } else {
-            chatService.getChatInfo(chatId).thenAcceptAsync(chatInfo -> {
-                String jsonString = getInfo(chatInfo);
-                String safeText = truncateSafe(jsonString);
-                outputPaste.post(safeText)
-                        .doOnSubscribe(subscription -> editMessage.editMessage(chatId, messageId, "Pasting JSON to output paste service..."))
-                                .doOnSuccess(success -> editMessage.editMessage(chatId, messageId, "<code>" + safeText + "</code>"))
-                        .then();
-
-            }).exceptionally(ex -> {
-                globalTelegramExceptionHandler.handle(ex);
-                return null;
-            });
+            chatService.getChatInfo(chatId)
+                    .flatMap(chatInfo -> {
+                        String jsonString = getInfo(chatInfo);
+                        String safeText = truncateSafe(jsonString);
+                        return editMessage.editMessage(chatId, messageId, "Pasting JSON to output paste service...")
+                                .then(outputPaste.post(safeText))
+                                .flatMap(url -> editMessage.editMessage(chatId, messageId, "<code>" + safeText + "</code>"));
+                    })
+                    .doOnError(globalTelegramExceptionHandler::handle)
+                    .subscribe();
         }
     }
     private String truncateSafe(String text) {

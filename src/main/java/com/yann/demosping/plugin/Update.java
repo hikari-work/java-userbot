@@ -89,9 +89,8 @@ public class Update {
     }
 
     public void sendMessage(Long chatId, Long messageId, String text) {
-        editMessage.editMessage(chatId, messageId, text).exceptionally(ex -> {
-            globalTelegramExceptionHandler.handle(ex);
-            return null;
-        });
+        editMessage.editMessage(chatId, messageId, text)
+                .doOnError(globalTelegramExceptionHandler::handle)
+                .subscribe();
     }
 }

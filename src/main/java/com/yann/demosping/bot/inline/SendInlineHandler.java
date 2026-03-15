@@ -1,6 +1,7 @@
 package com.yann.demosping.bot.inline;
 
 import com.yann.demosping.bot.manager.InlineQuery;
+import com.yann.demosping.utils.Keyboard;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.extern.slf4j.Slf4j;
@@ -93,7 +94,6 @@ public class SendInlineHandler {
         for (String line : lines) {
             String trimmed = line.trim();
             if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-                // Strip outer brackets and split on "] [" for multiple buttons in a row
                 String inner = trimmed.substring(1, trimmed.length() - 1);
                 String[] btnDefs = inner.split("\\] \\[");
                 List<TdApi.InlineKeyboardButton> row = new ArrayList<>();
@@ -103,10 +103,7 @@ public class SendInlineHandler {
                     if (parts.length == 2) {
                         String label = parts[0].trim();
                         String value = parts[1].trim();
-                        TdApi.InlineKeyboardButton btn = new TdApi.InlineKeyboardButton();
-                        btn.text = label;
-                        btn.type = resolveButtonType(value);
-                        row.add(btn);
+                        row.add(Keyboard.btn(label, resolveButtonType(value)));
                     }
                 }
 
@@ -119,12 +116,7 @@ public class SendInlineHandler {
             }
         }
 
-        TdApi.ReplyMarkupInlineKeyboard keyboard = null;
-        if (!rows.isEmpty()) {
-            keyboard = new TdApi.ReplyMarkupInlineKeyboard();
-            keyboard.rows = rows.toArray(new TdApi.InlineKeyboardButton[0][]);
-        }
-
+        TdApi.ReplyMarkupInlineKeyboard keyboard = rows.isEmpty() ? null : Keyboard.ofRows(rows);
         return new ParsedContent(textBuilder.toString(), keyboard);
     }
 

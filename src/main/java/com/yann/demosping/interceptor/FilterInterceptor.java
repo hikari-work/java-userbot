@@ -8,6 +8,7 @@ import it.tdlight.jni.TdApi;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Mono;
 
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -29,39 +30,29 @@ public class FilterInterceptor implements MessageInterceptor {
     }
 
     @Override
-    public boolean preHandle(TdApi.UpdateNewMessage message, String text) {
-        if (message.message.isOutgoing) {
-            return true;
-        }
+    public Mono<Boolean> preHandle(TdApi.UpdateNewMessage message, String text) {
+        if (message.message.isOutgoing) return Mono.just(true);
 
         long chatId = message.message.chatId;
         String messageText = extractText(message);
-        if (messageText == null || messageText.isBlank()) {
-            return true;
-        }
+        if (messageText == null || messageText.isBlank()) return Mono.just(true);
 
-        Map<Object, Object> filters = moduleStateService.getAllFilters(chatId);
-        if (filters == null || filters.isEmpty()) {
-            return true;
-        }
-
-        String savedValue = findMatchingFilter(messageText, filters);
-        if (savedValue == null) {
-            return true;
-        }
-
-        replyWithFilteredMessage(chatId, message.message.id, savedValue);
-        return true;
+        return moduleStateService.getAllFilters(chatId)
+                .map(filters -> {
+                    if (filters == null || filters.isEmpty()) return true;
+                    String savedValue = findMatchingFilter(messageText, filters);
+                    if (savedValue != null) {
+                        replyWithFilteredMessage(chatId, message.message.id, savedValue);
+                    }
+                    return true;
+                })
+                .defaultIfEmpty(true);
     }
 
     private String extractText(TdApi.UpdateNewMessage message) {
-        if (message.message.content instanceof TdApi.MessageText text) {
-            return text.text.text;
-        } else if (message.message.content instanceof TdApi.MessageVideo video) {
-            return video.caption.text;
-        } else if (message.message.content instanceof TdApi.MessagePhoto photo) {
-            return photo.caption.text;
-        }
+        if (message.message.content instanceof TdApi.MessageText text) return text.text.text;
+        if (message.message.content instanceof TdApi.MessageVideo video) return video.caption.text;
+        if (message.message.content instanceof TdApi.MessagePhoto photo) return photo.caption.text;
         return null;
     }
 
@@ -81,18 +72,13 @@ public class FilterInterceptor implements MessageInterceptor {
         long sourceMessageId = Long.parseLong(parts[1]);
 
         client.send(new TdApi.GetMessage(sourceChatId, sourceMessageId), result -> {
-            if (result.isError()) {
-                return;
-            }
+            if (result.isError()) return;
             TdApi.InputMessageContent inputContent = copyMessage.convertToInput(result.get().content);
             if (inputContent != null) {
                 client.send(new TdApi.SendMessage(
-                        chatId,
-                        0,
+                        chatId, 0,
                         new TdApi.InputMessageReplyToMessage(replyToMessageId, null, 0),
-                        null,
-                        null,
-                        inputContent
+                        null, null, inputContent
                 ));
             }
         });

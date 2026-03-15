@@ -37,21 +37,18 @@ public class GlobalTelegramExceptionHandler {
         if (ex.getChatId() != null && ex.getMessageId() != null) {
             String errorMessage = "Format text not valid " + ex.getMessage();
             editMessage.editMessage(ex.getChatId(), ex.getMessageId(), errorMessage)
-                    .exceptionally(editError -> {
-                        log.error("Failed Edit Messae {}", editError.getMessage());
-                        return null;
-                    });
+                    .doOnError(editError -> log.error("Failed Edit Message {}", editError.getMessage()))
+                    .subscribe();
         }
     }
+
     private void handleSendMessageException(TelegramException ex) {
         if (ex.getChatId() != null && ex.getMessageId() != null) {
             String errorMessage = "❌ Gagal mengirim pesan!\n\n" + ex.getMessage();
 
             editMessage.editMessage(ex.getChatId(), ex.getMessageId(), errorMessage)
-                    .exceptionally(editError -> {
-                        sendMessageUtils.sendMessage(ex.getChatId(), 0, errorMessage);
-                        return null;
-                    });
+                    .onErrorResume(editError -> sendMessageUtils.sendMessage(ex.getChatId(), 0, errorMessage))
+                    .subscribe();
         }
     }
 

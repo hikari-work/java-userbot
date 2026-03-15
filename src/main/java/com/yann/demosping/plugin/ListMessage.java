@@ -62,10 +62,8 @@ public class ListMessage {
         if (link == null || link.isEmpty()) {
             sendMessageUtils.sendMessage(currentChatId, commandMsgId,
                             "❌ Link required. Use <code>" + messagePrefix + "list -help</code> for tutorial.")
-                    .exceptionally(ex -> {
-                        log.error("Failed to send error message: {}", ex.getMessage());
-                        return null;
-                    });
+                    .doOnError(ex -> log.error("Failed to send error message: {}", ex.getMessage()))
+                    .subscribe();
             return;
         }
 
@@ -77,10 +75,8 @@ public class ListMessage {
             int lastSlashIndex = link.lastIndexOf('/');
             if (lastSlashIndex == -1 || lastSlashIndex == link.length() - 1) {
                 sendMessageUtils.sendMessage(currentChatId, commandMsgId, "❌ Format link salah. Harus berakhiran angka ID.")
-                        .exceptionally(ex -> {
-                            log.error("Failed to send error message: {}", ex.getMessage());
-                            return null;
-                        });
+                        .doOnError(ex -> log.error("Failed to send error message: {}", ex.getMessage()))
+                        .subscribe();
                 return;
             }
 
@@ -99,16 +95,12 @@ public class ListMessage {
 
         } catch (NumberFormatException e) {
             sendMessageUtils.sendMessage(currentChatId, commandMsgId, "❌ ID di akhir link bukan angka valid.")
-                    .exceptionally(ex -> {
-                        log.error("Failed to send error message: {}", ex.getMessage());
-                        return null;
-                    });
+                    .doOnError(ex -> log.error("Failed to send error message: {}", ex.getMessage()))
+                    .subscribe();
         } catch (Exception e) {
             sendMessageUtils.sendMessage(currentChatId, commandMsgId, "❌ Error parsing link: " + e.getMessage())
-                    .exceptionally(ex -> {
-                        log.error("Failed to send error message: {}", ex.getMessage());
-                        return null;
-                    });
+                    .doOnError(ex -> log.error("Failed to send error message: {}", ex.getMessage()))
+                    .subscribe();
         }
     }
 
@@ -323,9 +315,7 @@ public class ListMessage {
                 """.formatted(messagePrefix, messagePrefix, messagePrefix);
 
         sendMessageUtils.sendMessage(chatId, replyToMsgId, helpText)
-                .exceptionally(ex -> {
-                    log.error("Failed to send help message: {}", ex.getMessage());
-                    return null;
-                });
+                .doOnError(ex -> log.error("Failed to send help message: {}", ex.getMessage()))
+                .subscribe();
     }
 }

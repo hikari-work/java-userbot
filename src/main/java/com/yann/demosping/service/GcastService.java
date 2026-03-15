@@ -8,9 +8,15 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
+import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 @Slf4j
@@ -38,23 +44,23 @@ public class GcastService {
         this.messageCache = messageCache;
     }
 
-    private CompletableFuture<long[]> fetchChatList(TdApi.ChatList chatList) {
-        CompletableFuture<long[]> future = new CompletableFuture<>();
-        TdApi.GetChats getChats = new TdApi.GetChats();
-        getChats.chatList = chatList;
-        getChats.limit = 2000;
-        userBotClient.send(getChats, result -> {
-            if (result.isError()) {
-                log.warn("Failed to fetch chat list: {}", result.getError().message);
-                future.complete(new long[0]);
-            } else {
-                future.complete(result.get().chatIds);
-            }
+    private Mono<long[]> fetchChatList(TdApi.ChatList chatList) {
+        return Mono.create(sink -> {
+            TdApi.GetChats getChats = new TdApi.GetChats();
+            getChats.chatList = chatList;
+            getChats.limit = 2000;
+            userBotClient.send(getChats, result -> {
+                if (result.isError()) {
+                    log.warn("Failed to fetch chat list: {}", result.getError().message);
+                    sink.success(new long[0]);
+                } else {
+                    sink.success(result.get().chatIds);
+                }
+            });
         });
-        return future;
     }
 
-    public CompletableFuture<List<Long>> resolveChatIds(GcastConfig config) {
+    public Mono<List<Long>> resolveChatIds(GcastConfig config) {
         Set<String> modes = config.filterModes == null ? new HashSet<>() : config.filterModes;
 
         boolean useMainChatList = modes.contains("mainChatList");
@@ -74,17 +80,10 @@ public class GcastService {
             useArchived = true;
         }
 
-        List<CompletableFuture<long[]>> sourceFutures = new ArrayList<>();
-
-        if (useMainChatList) {
-            sourceFutures.add(fetchChatList(new TdApi.ChatListMain()));
-        }
-        if (useArchived) {
-            sourceFutures.add(fetchChatList(new TdApi.ChatListArchive()));
-        }
-        if (useFolder && config.folderId != 0) {
-            sourceFutures.add(fetchChatList(new TdApi.ChatListFolder(config.folderId)));
-        }
+        List<Mono<long[]>> sourceMonos = new ArrayList<>();
+        if (useMainChatList) sourceMonos.add(fetchChatList(new TdApi.ChatListMain()));
+        if (useArchived) sourceMonos.add(fetchChatList(new TdApi.ChatListArchive()));
+        if (useFolder && config.folderId != 0) sourceMonos.add(fetchChatList(new TdApi.ChatListFolder(config.folderId)));
 
         final boolean finalUseWhitelist = useWhitelist;
         final boolean finalUseLabel = useLabel;
@@ -94,91 +93,71 @@ public class GcastService {
         final boolean finalFilterChannel = filterChannel;
         final boolean finalFilterPrivateChat = filterPrivateChat;
 
-        return CompletableFuture.allOf(sourceFutures.toArray(new CompletableFuture[0]))
-                .thenCompose(ignored -> {
-                    Set<Long> sourceIds = new LinkedHashSet<>();
-                    for (CompletableFuture<long[]> f : sourceFutures) {
-                        try {
-                            for (long id : f.get()) {
-                                sourceIds.add(id);
-                            }
-                        } catch (Exception e) {
-                            log.warn("Error collecting source chat ids", e);
-                        }
-                    }
+        Mono<Set<Long>> sourceIdsMono = sourceMonos.isEmpty()
+                ? Mono.just(new LinkedHashSet<>())
+                : Flux.merge(sourceMonos)
+                        .reduce(new LinkedHashSet<Long>(), (set, arr) -> {
+                            for (long id : arr) set.add(id);
+                            return set;
+                        });
 
-                    if (finalUseWhitelist) {
-                        sourceIds.addAll(stateService.getWhitelist());
-                    }
-                    if (finalUseLabel && config.labelName != null && !config.labelName.isBlank()) {
-                        sourceIds.addAll(stateService.getLabel(config.labelName));
-                    }
+        Mono<Set<Long>> whitelistMono = finalUseWhitelist
+                ? stateService.getWhitelist()
+                : Mono.just(new HashSet<>());
+        Mono<Set<Long>> labelMono = (finalUseLabel && config.labelName != null && !config.labelName.isBlank())
+                ? stateService.getLabel(config.labelName)
+                : Mono.just(new HashSet<>());
+        Mono<Set<Long>> blacklistMono = finalUseBlacklist
+                ? stateService.getBlacklist()
+                : Mono.just(new HashSet<>());
 
-                    Set<Long> blacklistIds = finalUseBlacklist ? stateService.getBlacklist() : new HashSet<>();
+        return sourceIdsMono.zipWith(Mono.zip(whitelistMono, labelMono, blacklistMono))
+                .flatMap(t -> {
+                    Set<Long> sourceIds = t.getT1();
+                    sourceIds.addAll(t.getT2().getT1()); // whitelist
+                    sourceIds.addAll(t.getT2().getT2()); // label
+                    Set<Long> blacklistIds = t.getT2().getT3();
 
                     boolean hasTypeFilter = finalFilterSupergroup || finalFilterBasicGroup || finalFilterChannel || finalFilterPrivateChat;
+                    Set<Long> alreadySent = new HashSet<>(config.sentChatIds != null ? config.sentChatIds : List.of());
 
                     if (!hasTypeFilter && !finalUseBlacklist) {
                         List<Long> result = new ArrayList<>(sourceIds);
-                        Set<Long> alreadySent = new HashSet<>(config.sentChatIds != null ? config.sentChatIds : List.of());
                         result.removeIf(alreadySent::contains);
-                        return CompletableFuture.completedFuture(result);
+                        return Mono.just(result);
                     }
 
                     if (!hasTypeFilter) {
                         List<Long> result = new ArrayList<>(sourceIds);
                         result.removeIf(blacklistIds::contains);
-                        Set<Long> alreadySent = new HashSet<>(config.sentChatIds != null ? config.sentChatIds : List.of());
                         result.removeIf(alreadySent::contains);
-                        return CompletableFuture.completedFuture(result);
+                        return Mono.just(result);
                     }
 
-                    List<CompletableFuture<Long>> typedFutures = new ArrayList<>();
+                    List<Mono<Long>> typedMonos = new ArrayList<>();
                     for (Long chatId : sourceIds) {
                         if (blacklistIds.contains(chatId)) continue;
-                        CompletableFuture<Long> typeFuture = new CompletableFuture<>();
-                        TdApi.GetChat getChat = new TdApi.GetChat();
-                        getChat.chatId = chatId;
-                        userBotClient.send(getChat, result -> {
-                            if (result.isError()) {
-                                typeFuture.complete(null);
-                                return;
-                            }
-                            TdApi.Chat chat = result.get();
-                            boolean matches = false;
-                            if (finalFilterSupergroup && chat.type instanceof TdApi.ChatTypeSupergroup s && !s.isChannel) {
-                                matches = true;
-                            }
-                            if (finalFilterChannel && chat.type instanceof TdApi.ChatTypeSupergroup s && s.isChannel) {
-                                matches = true;
-                            }
-                            if (finalFilterBasicGroup && chat.type instanceof TdApi.ChatTypeBasicGroup) {
-                                matches = true;
-                            }
-                            if (finalFilterPrivateChat && chat.type instanceof TdApi.ChatTypePrivate) {
-                                matches = true;
-                            }
-                            typeFuture.complete(matches ? chatId : null);
+                        final long finalChatId = chatId;
+                        Mono<Long> typeMono = Mono.<Long>create(sink -> {
+                            TdApi.GetChat getChat = new TdApi.GetChat();
+                            getChat.chatId = finalChatId;
+                            userBotClient.send(getChat, result -> {
+                                if (result.isError()) { sink.success(null); return; }
+                                TdApi.Chat chat = result.get();
+                                boolean matches = false;
+                                if (finalFilterSupergroup && chat.type instanceof TdApi.ChatTypeSupergroup s && !s.isChannel) matches = true;
+                                if (finalFilterChannel && chat.type instanceof TdApi.ChatTypeSupergroup s && s.isChannel) matches = true;
+                                if (finalFilterBasicGroup && chat.type instanceof TdApi.ChatTypeBasicGroup) matches = true;
+                                if (finalFilterPrivateChat && chat.type instanceof TdApi.ChatTypePrivate) matches = true;
+                                sink.success(matches ? finalChatId : null);
+                            });
                         });
-                        typedFutures.add(typeFuture);
+                        typedMonos.add(typeMono);
                     }
 
-                    return CompletableFuture.allOf(typedFutures.toArray(new CompletableFuture[0]))
-                            .thenApply(v -> {
-                                Set<Long> alreadySent = new HashSet<>(config.sentChatIds != null ? config.sentChatIds : List.of());
-                                List<Long> result = new ArrayList<>();
-                                for (CompletableFuture<Long> f : typedFutures) {
-                                    try {
-                                        Long id = f.get();
-                                        if (id != null && !alreadySent.contains(id)) {
-                                            result.add(id);
-                                        }
-                                    } catch (Exception e) {
-                                        log.warn("Error resolving chat type", e);
-                                    }
-                                }
-                                return result;
-                            });
+                    return Flux.merge(typedMonos)
+                            .filter(id -> id != null && !alreadySent.contains(id))
+                            .collectList();
                 });
     }
 
@@ -186,20 +165,19 @@ public class GcastService {
         return Long.parseLong(botToken.split(":")[0]);
     }
 
-    private CompletableFuture<TdApi.InputMessageContent> fetchMessageContent(long chatId, long messageId) {
-        CompletableFuture<TdApi.InputMessageContent> future = new CompletableFuture<>();
-        TdApi.GetMessage req = new TdApi.GetMessage();
-        req.chatId = chatId;
-        req.messageId = messageId;
-        userBotClient.send(req, result -> {
-            if (result.isError()) {
-                future.completeExceptionally(new RuntimeException(result.getError().message));
-                return;
-            }
-            TdApi.InputMessageContent content = convertContent(result.get().content);
-            future.complete(content);
+    private Mono<TdApi.InputMessageContent> fetchMessageContent(long chatId, long messageId) {
+        return Mono.create(sink -> {
+            TdApi.GetMessage req = new TdApi.GetMessage();
+            req.chatId = chatId;
+            req.messageId = messageId;
+            userBotClient.send(req, result -> {
+                if (result.isError()) {
+                    sink.error(new RuntimeException(result.getError().message));
+                    return;
+                }
+                sink.success(convertContent(result.get().content));
+            });
         });
-        return future;
     }
 
     private TdApi.InputMessageContent convertContent(TdApi.MessageContent content) {
@@ -243,125 +221,129 @@ public class GcastService {
             s.sticker = new TdApi.InputFileRemote(ms.sticker.sticker.remote.id);
             return s;
         }
-        return null; // unsupported type — caller will fall back to ForwardMessages
+        return null;
     }
 
-    private CompletableFuture<Void> forwardMessageViaBot(String sessionId, long targetChatId) {
-        CompletableFuture<Void> future = new CompletableFuture<>();
-        TdApi.GetInlineQueryResults req = new TdApi.GetInlineQueryResults();
-        req.botUserId = botUserId();
-        req.chatId = targetChatId;
-        req.query = "gcast " + sessionId;
-        req.offset = "";
-        userBotClient.send(req, result -> {
-            if (result.isError()) {
-                log.warn("GetInlineQueryResults failed for sid={}: {}", sessionId, result.getError().message);
-                future.complete(null);
-                return;
-            }
-            TdApi.InlineQueryResults results = result.get();
-            if (results.results.length == 0) {
-                log.warn("No inline results for sid={}", sessionId);
-                future.complete(null);
-                return;
-            }
-            TdApi.SendInlineQueryResultMessage send = new TdApi.SendInlineQueryResultMessage();
-            send.chatId = targetChatId;
-            send.queryId = results.inlineQueryId;
-            send.resultId = extractInlineResultId(results.results[0]);
-            send.hideViaBot = false;
-            userBotClient.send(send, sendResult -> {
-                if (sendResult.isError()) {
-                    log.warn("SendInlineQueryResultMessage failed to chatId={}: {}", targetChatId, sendResult.getError().message);
+    private Mono<Void> forwardMessageViaBot(String sessionId, long targetChatId) {
+        return Mono.create(sink -> {
+            TdApi.GetInlineQueryResults req = new TdApi.GetInlineQueryResults();
+            req.botUserId = botUserId();
+            req.chatId = targetChatId;
+            req.query = "gcast " + sessionId;
+            req.offset = "";
+            userBotClient.send(req, result -> {
+                if (result.isError()) {
+                    log.warn("GetInlineQueryResults failed for sid={}: {}", sessionId, result.getError().message);
+                    sink.success();
+                    return;
                 }
-                future.complete(null);
+                TdApi.InlineQueryResults results = result.get();
+                if (results.results.length == 0) {
+                    log.warn("No inline results for sid={}", sessionId);
+                    sink.success();
+                    return;
+                }
+                TdApi.SendInlineQueryResultMessage send = new TdApi.SendInlineQueryResultMessage();
+                send.chatId = targetChatId;
+                send.queryId = results.inlineQueryId;
+                send.resultId = extractInlineResultId(results.results[0]);
+                send.hideViaBot = false;
+                userBotClient.send(send, sendResult -> {
+                    if (sendResult.isError()) {
+                        log.warn("SendInlineQueryResultMessage failed to chatId={}: {}", targetChatId, sendResult.getError().message);
+                    }
+                    sink.success();
+                });
             });
         });
-        return future;
     }
 
-    private CompletableFuture<Void> forwardMessage(long sourceChatId, long sourceMessageId, long targetChatId, boolean sendCopy) {
-        CompletableFuture<Void> future = new CompletableFuture<>();
-        TdApi.ForwardMessages fwd = new TdApi.ForwardMessages();
-        fwd.chatId = targetChatId;
-        fwd.fromChatId = sourceChatId;
-        fwd.messageIds = new long[]{sourceMessageId};
-        fwd.options = new TdApi.MessageSendOptions();
-        fwd.sendCopy = sendCopy;
-        userBotClient.send(fwd, result -> {
-            if (result.isError()) {
-                log.warn("Failed to forward message to chatId={}: {}", targetChatId, result.getError().message);
-            }
-            future.complete(null);
+    private Mono<Void> forwardMessage(long sourceChatId, long sourceMessageId, long targetChatId, boolean sendCopy) {
+        return Mono.create(sink -> {
+            TdApi.ForwardMessages fwd = new TdApi.ForwardMessages();
+            fwd.chatId = targetChatId;
+            fwd.fromChatId = sourceChatId;
+            fwd.messageIds = new long[]{sourceMessageId};
+            fwd.options = new TdApi.MessageSendOptions();
+            fwd.sendCopy = sendCopy;
+            userBotClient.send(fwd, result -> {
+                if (result.isError()) {
+                    log.warn("Failed to forward message to chatId={}: {}", targetChatId, result.getError().message);
+                }
+                sink.success();
+            });
         });
-        return future;
     }
 
     public void executeBroadcast(String sessionId, List<Long> chatIds, GcastConfig config, Consumer<String> progressCallback) {
-        stateService.addRunningSession(sessionId);
-        CompletableFuture.runAsync(() -> {
-            // If sendViaBot mode, pre-cache message content if not already cached
-            if (config.sendViaBot && messageCache.get(sessionId) == null) {
-                try {
-                    TdApi.InputMessageContent content = fetchMessageContent(config.sourceChatId, config.sourceMessageId).get(15, TimeUnit.SECONDS);
-                    if (content != null) {
-                        messageCache.put(sessionId, content);
-                    }
-                } catch (Exception e) {
-                    log.warn("Failed to pre-cache message content for sid={}: {}", sessionId, e.getMessage());
-                }
-            }
+        stateService.addRunningSession(sessionId).subscribe();
+        int total = chatIds.size();
+        AtomicInteger sentRef = new AtomicInteger(0);
 
-            int total = chatIds.size();
-            int sent = 0;
+        Mono<Void> preCacheMono = (config.sendViaBot && messageCache.get(sessionId) == null)
+                ? fetchMessageContent(config.sourceChatId, config.sourceMessageId)
+                        .doOnNext(content -> { if (content != null) messageCache.put(sessionId, content); })
+                        .then()
+                        .onErrorResume(e -> {
+                            log.warn("Failed to pre-cache message for sid={}: {}", sessionId, e.getMessage());
+                            return Mono.empty();
+                        })
+                : Mono.empty();
 
-            for (Long targetChatId : chatIds) {
-                if (stateService.isCancelled(sessionId)) {
-                    progressCallback.accept("CANCELLED");
-                    stateService.clearCancelFlag(sessionId);
-                    if (config.sendViaBot) messageCache.remove(sessionId);
-                    return;
-                }
+        preCacheMono
+                .thenMany(Flux.fromIterable(chatIds))
+                .concatMap(targetChatId ->
+                        stateService.isCancelled(sessionId)
+                                .flatMap(cancelled -> {
+                                    if (cancelled) return Mono.error(new BroadcastCancelledException());
 
-                try {
-                    if (config.sendViaBot) {
-                        forwardMessageViaBot(sessionId, targetChatId).get(30, TimeUnit.SECONDS);
-                    } else {
-                        forwardMessage(config.sourceChatId, config.sourceMessageId, targetChatId, config.noForwardHeader).get(30, TimeUnit.SECONDS);
-                    }
-                    sent++;
+                                    Mono<Void> sendMono = config.sendViaBot
+                                            ? forwardMessageViaBot(sessionId, targetChatId)
+                                            : forwardMessage(config.sourceChatId, config.sourceMessageId, targetChatId, config.noForwardHeader);
 
-                    GcastConfig latest = stateService.getSession(sessionId);
-                    if (latest != null) {
-                        if (latest.sentChatIds == null) latest.sentChatIds = new ArrayList<>();
-                        latest.sentChatIds.add(targetChatId);
-                        if (sent % 5 == 0) {
-                            stateService.saveSession(sessionId, latest);
+                                    return sendMono
+                                            .then(Mono.fromRunnable(() -> progressCallback.accept(sentRef.incrementAndGet() + "/" + total)))
+                                            .then(stateService.getSession(sessionId)
+                                                    .flatMap(latest -> {
+                                                        if (latest.sentChatIds == null) latest.sentChatIds = new ArrayList<>();
+                                                        latest.sentChatIds.add(targetChatId);
+                                                        if (sentRef.get() % 5 == 0)
+                                                            return stateService.saveSession(sessionId, latest).then();
+                                                        return Mono.<Void>empty();
+                                                    })
+                                            )
+                                            .then(config.delayMs > 0
+                                                    ? Mono.delay(Duration.ofMillis(config.delayMs)).then()
+                                                    : Mono.<Void>empty())
+                                            .onErrorResume(ex -> {
+                                                log.warn("Error during broadcast to chatId={}: {}", targetChatId, ex.getMessage());
+                                                return Mono.empty();
+                                            });
+                                })
+                )
+                .subscribeOn(Schedulers.boundedElastic())
+                .subscribe(
+                        v -> {},
+                        ex -> {
+                            if (ex instanceof BroadcastCancelledException) {
+                                progressCallback.accept("CANCELLED");
+                                stateService.clearCancelFlag(sessionId).subscribe();
+                            } else {
+                                log.error("Broadcast failed for session {}", sessionId, ex);
+                            }
+                            if (config.sendViaBot) messageCache.remove(sessionId);
+                            stateService.removeRunningSession(sessionId).subscribe();
+                        },
+                        () -> {
+                            if (config.sendViaBot) messageCache.remove(sessionId);
+                            stateService.removeRunningSession(sessionId).subscribe();
+                            stateService.getSession(sessionId)
+                                    .subscribe(latest -> {
+                                        if (latest != null) stateService.saveSession(sessionId, latest).subscribe();
+                                    });
+                            progressCallback.accept("DONE:" + sentRef.get() + "/" + total);
                         }
-                    }
-
-                    progressCallback.accept(sent + "/" + total);
-
-                    if (config.delayMs > 0) {
-                        Thread.sleep(config.delayMs);
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    progressCallback.accept("CANCELLED");
-                    return;
-                } catch (Exception e) {
-                    log.warn("Error during broadcast to chatId={}: {}", targetChatId, e.getMessage());
-                }
-            }
-
-            GcastConfig latest = stateService.getSession(sessionId);
-            if (latest != null) {
-                stateService.saveSession(sessionId, latest);
-            }
-
-            if (config.sendViaBot) messageCache.remove(sessionId);
-            progressCallback.accept("DONE:" + sent + "/" + total);
-        });
+                );
     }
 
     private String extractInlineResultId(TdApi.InlineQueryResult result) {
@@ -379,7 +361,7 @@ public class GcastService {
     }
 
     public void cancelBroadcast(String sessionId) {
-        stateService.setCancelFlag(sessionId);
+        stateService.setCancelFlag(sessionId).subscribe();
         ScheduledFuture<?> task = scheduledTasks.get(sessionId);
         if (task != null) {
             task.cancel(false);
@@ -389,23 +371,33 @@ public class GcastService {
 
     public void scheduleRecurring(String sessionId, GcastConfig config, Consumer<String> progressCallback) {
         long intervalMs = config.intervalMs > 0 ? config.intervalMs : 60_000;
-        ScheduledFuture<?> task = taskScheduler.scheduleAtFixedRate(() -> {
-            GcastConfig latest = stateService.getSession(sessionId);
-            if (latest == null) {
-                log.warn("Session {} not found during scheduled run, skipping", sessionId);
-                return;
-            }
-            if (stateService.isCancelled(sessionId)) return;
-
-            latest.sentChatIds = new ArrayList<>();
-            stateService.saveSession(sessionId, latest);
-
-            resolveChatIds(latest).thenAccept(chatIds -> {
-                latest.totalChats = chatIds.size();
-                stateService.saveSession(sessionId, latest);
-                executeBroadcast(sessionId, chatIds, latest, progressCallback);
-            });
-        }, java.time.Duration.ofMillis(intervalMs));
+        ScheduledFuture<?> task = taskScheduler.scheduleAtFixedRate(() ->
+                stateService.isCancelled(sessionId)
+                        .filter(cancelled -> !cancelled)
+                        .flatMap(__ -> stateService.getSession(sessionId))
+                        .subscribe(latest -> {
+                            if (latest == null) {
+                                log.warn("Session {} not found during scheduled run, skipping", sessionId);
+                                return;
+                            }
+                            latest.sentChatIds = new ArrayList<>();
+                            stateService.saveSession(sessionId, latest).subscribe();
+                            resolveChatIds(latest).subscribe(
+                                    chatIds -> {
+                                        latest.totalChats = chatIds.size();
+                                        stateService.saveSession(sessionId, latest).subscribe();
+                                        executeBroadcast(sessionId, chatIds, latest, progressCallback);
+                                    },
+                                    ex -> log.error("resolveChatIds failed for session {}: {}", sessionId, ex.getMessage(), ex)
+                            );
+                        }, ex -> log.error("scheduleRecurring error for session {}: {}", sessionId, ex.getMessage(), ex)),
+                Duration.ofMillis(intervalMs));
         scheduledTasks.put(sessionId, task);
+    }
+
+    private static final class BroadcastCancelledException extends RuntimeException {
+        BroadcastCancelledException() {
+            super("Broadcast cancelled", null, true, false);
+        }
     }
 }

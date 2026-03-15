@@ -4,15 +4,12 @@ import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
-
-import java.util.concurrent.CompletableFuture;
+import reactor.core.publisher.Mono;
 
 @Slf4j
 @Component
 public class MessageLinkResolver {
-
 
     private final SimpleTelegramClient client;
 
@@ -20,33 +17,25 @@ public class MessageLinkResolver {
         this.client = client;
     }
 
-    @Async
-    public CompletableFuture<TdApi.Message> resolve(String link) {
-        CompletableFuture<TdApi.Message> future = new CompletableFuture<>();
+    public Mono<TdApi.Message> resolve(String link) {
         String cleanLink = link.trim();
-
-        client.send(new TdApi.GetMessageLinkInfo(cleanLink), result -> {
-            if (result.isError()) {
-
-                future.completeExceptionally(new RuntimeException(result.getError().message));
-                return;
-            }
-
-            TdApi.MessageLinkInfo info = result.get();
-
-            if (info.message != null) {
-
-                future.complete(info.message);
-            } else {
-
-                if (info.chatId != 0) {
-                    future.completeExceptionally(new RuntimeException("Chat ditemukan (ID: " + info.chatId + "), tapi Pesan tidak dapat diakses/belum terload."));
-                } else {
-                    future.completeExceptionally(new RuntimeException("Link valid tapi tidak mengarah ke pesan yang bisa diakses bot."));
-                }
-            }
-        });
-
-        return future;
+        return Mono.create(sink ->
+                client.send(new TdApi.GetMessageLinkInfo(cleanLink), result -> {
+                    if (result.isError()) {
+                        sink.error(new RuntimeException(result.getError().message));
+                        return;
+                    }
+                    TdApi.MessageLinkInfo info = result.get();
+                    if (info.message != null) {
+                        sink.success(info.message);
+                    } else {
+                        if (info.chatId != 0) {
+                            sink.error(new RuntimeException("Chat ditemukan (ID: " + info.chatId + "), tapi Pesan tidak dapat diakses/belum terload."));
+                        } else {
+                            sink.error(new RuntimeException("Link valid tapi tidak mengarah ke pesan yang bisa diakses bot."));
+                        }
+                    }
+                })
+        );
     }
 }

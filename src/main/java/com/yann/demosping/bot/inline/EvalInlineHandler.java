@@ -2,6 +2,8 @@ package com.yann.demosping.bot.inline;
 
 import com.yann.demosping.bot.manager.InlineQuery;
 import com.yann.demosping.service.ExecResultCache;
+import com.yann.demosping.service.OutputPaste;
+import com.yann.demosping.utils.Keyboard;
 import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import lombok.extern.slf4j.Slf4j;
@@ -14,11 +16,14 @@ public class EvalInlineHandler {
 
     private final ExecResultCache resultCache;
     private final SimpleTelegramClient client;
+    private final OutputPaste outputPaste;
 
     public EvalInlineHandler(ExecResultCache resultCache,
-                             @Qualifier("botClient") SimpleTelegramClient client) {
+                             @Qualifier("botClient") SimpleTelegramClient client,
+                             OutputPaste outputPaste) {
         this.resultCache = resultCache;
         this.client = client;
+        this.outputPaste = outputPaste;
     }
 
     @InlineQuery(commands = "eval", regex = "^eval .+")
@@ -37,15 +42,31 @@ public class EvalInlineHandler {
     }
 
     private void buildAndAnswer(long queryId, String resultId, String evalId, String output) {
-        String truncated = output.length() > 2000 ? output.substring(0, 2000) + "\n...(truncated)" : output;
-        String html = "<b>Eval output:</b>\n<pre>" + escapeHtml(truncated) + "</pre>";
+        if (output.length() > 100) {
+            String preview = output.substring(0, 100) + "...";
+            outputPaste.post(output).subscribe(
+                    pasteUrl -> buildMessage(queryId, resultId, evalId, preview, pasteUrl),
+                    err -> {
+                        log.error("paste.rs upload failed for evalId={}", evalId, err);
+                        buildMessage(queryId, resultId, evalId, preview, null);
+                    }
+            );
+        } else {
+            buildMessage(queryId, resultId, evalId, output, null);
+        }
+    }
+
+    private void buildMessage(long queryId, String resultId, String evalId, String displayOutput, String pasteUrl) {
+        String html = "<b>Eval output:</b>\n<pre>" + escapeHtml(displayOutput) + "</pre>";
 
         client.send(new TdApi.ParseTextEntities(html, new TdApi.TextParseModeHTML()), parseResult -> {
             TdApi.FormattedText formattedText = parseResult.isError()
                     ? new TdApi.FormattedText(html, new TdApi.TextEntity[0])
                     : parseResult.get();
 
-            TdApi.ReplyMarkupInlineKeyboard keyboard = buildKeyboard(resultId, evalId);
+            TdApi.ReplyMarkupInlineKeyboard keyboard = pasteUrl != null
+                    ? buildPasteKeyboard(resultId, pasteUrl)
+                    : buildKeyboard(resultId, evalId);
 
             TdApi.InputMessageText inputMessage = new TdApi.InputMessageText();
             inputMessage.text = formattedText;
@@ -54,7 +75,7 @@ public class EvalInlineHandler {
             TdApi.InputInlineQueryResultArticle article = new TdApi.InputInlineQueryResultArticle();
             article.id = resultId;
             article.title = "Eval result";
-            article.description = truncated.lines().findFirst().orElse("(empty)");
+            article.description = displayOutput.lines().findFirst().orElse("(empty)");
             article.inputMessageContent = inputMessage;
             article.replyMarkup = keyboard;
 
@@ -75,24 +96,20 @@ public class EvalInlineHandler {
 
     /**
      * Delete: "del:<resultId>"
-     * Re-run: "reeval:<resultId>:<evalId>"  (evalId used to look up snapshot + code)
+     * Re-run: "reeval:<resultId>:<evalId>"
      */
     public static TdApi.ReplyMarkupInlineKeyboard buildKeyboard(String resultId, String evalId) {
-        TdApi.InlineKeyboardButton deleteBtn = new TdApi.InlineKeyboardButton();
-        deleteBtn.text = "🗑 Delete";
-        TdApi.InlineKeyboardButtonTypeCallback delCb = new TdApi.InlineKeyboardButtonTypeCallback();
-        delCb.data = ("del:" + resultId).getBytes();
-        deleteBtn.type = delCb;
+        return Keyboard.of(new TdApi.InlineKeyboardButton[]{
+                Keyboard.callbackBtn("🗑 Delete", "del:" + resultId),
+                Keyboard.callbackBtn("🔄 Re-run", "reeval:" + resultId + ":" + evalId)
+        });
+    }
 
-        TdApi.InlineKeyboardButton rerunBtn = new TdApi.InlineKeyboardButton();
-        rerunBtn.text = "🔄 Re-run";
-        TdApi.InlineKeyboardButtonTypeCallback rerunCb = new TdApi.InlineKeyboardButtonTypeCallback();
-        rerunCb.data = ("reeval:" + resultId + ":" + evalId).getBytes();
-        rerunBtn.type = rerunCb;
-
-        TdApi.ReplyMarkupInlineKeyboard keyboard = new TdApi.ReplyMarkupInlineKeyboard();
-        keyboard.rows = new TdApi.InlineKeyboardButton[][]{{deleteBtn, rerunBtn}};
-        return keyboard;
+    private static TdApi.ReplyMarkupInlineKeyboard buildPasteKeyboard(String resultId, String pasteUrl) {
+        return Keyboard.of(new TdApi.InlineKeyboardButton[]{
+                Keyboard.callbackBtn("🗑 Delete", "del:" + resultId),
+                Keyboard.urlBtn("📋 Full output", pasteUrl)
+        });
     }
 
     private String escapeHtml(String text) {

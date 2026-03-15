@@ -10,10 +10,9 @@ import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
-
+import reactor.core.publisher.Mono;
 
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -21,9 +20,9 @@ import java.util.regex.Pattern;
 public class Ban {
 
     private final SimpleTelegramClient client;
-
     private final CommandRegistry commandRegistry;
     private final SendMessageUtils sendMessageUtils;
+    private final GlobalTelegramExceptionHandler globalTelegramExceptionHandler;
 
     public Ban(@Qualifier("userBotClient") SimpleTelegramClient client,
                CommandRegistry commandRegistry,
@@ -35,8 +34,6 @@ public class Ban {
         this.globalTelegramExceptionHandler = globalTelegramExceptionHandler;
     }
 
-    private final GlobalTelegramExceptionHandler globalTelegramExceptionHandler;
-
     @UserBotCommand(commands = {"kick", "ban"}, description = "Gunakan reply lalu: .kick -t 1h", sudoOnly = true)
     public void ban(TdApi.UpdateNewMessage message, String args) {
         long chatId = message.message.chatId;
@@ -46,44 +43,42 @@ public class Ban {
             int bannedUntil = parseDuration(param.getOrDefault("t", "0"));
 
             getMessageInfo(reply.chatId, reply.messageId)
-                    .thenComposeAsync(targetMsg -> {
+                    .flatMap(targetMsg -> {
                         if (targetMsg.senderId instanceof TdApi.MessageSenderUser user) {
                             return banUser(chatId, user.userId, bannedUntil);
                         }
-                        return CompletableFuture.failedFuture(new RuntimeException("Bukan user (mungkin Channel/Chat)"));
+                        return Mono.error(new RuntimeException("Bukan user (mungkin Channel/Chat)"));
                     })
-                    .thenAccept(v -> sendSystemMessage(chatId, "Berhasil mengeksekusi hukuman."))
-                    .exceptionally(ex -> {
-                        sendSystemMessage(chatId, "Gagal: " + ex.getMessage());
-                        return null;
-                    });
+                    .subscribe(
+                            v -> sendSystemMessage(chatId, "Berhasil mengeksekusi hukuman."),
+                            ex -> sendSystemMessage(chatId, "Gagal: " + ex.getMessage())
+                    );
         } else {
             showHelp(chatId);
         }
     }
 
-    public CompletableFuture<TdApi.Message> getMessageInfo(long chatId, long messageId) {
-        CompletableFuture<TdApi.Message> future = new CompletableFuture<>();
-        client.send(new TdApi.GetMessage(chatId, messageId), res -> {
-            if (res.isError()) future.completeExceptionally(new RuntimeException(res.getError().message));
-            else future.complete(res.get());
-        });
-        return future;
+    public Mono<TdApi.Message> getMessageInfo(long chatId, long messageId) {
+        return Mono.create(sink ->
+                client.send(new TdApi.GetMessage(chatId, messageId), res -> {
+                    if (res.isError()) sink.error(new RuntimeException(res.getError().message));
+                    else sink.success(res.get());
+                })
+        );
     }
 
-    public CompletableFuture<Void> banUser(long chatId, long userId, int bannedUntil) {
+    public Mono<Void> banUser(long chatId, long userId, int bannedUntil) {
         int executeTime = (bannedUntil > 0) ? (int) (System.currentTimeMillis() / 1000) + bannedUntil : 0;
-
-        CompletableFuture<Void> future = new CompletableFuture<>();
-        client.send(new TdApi.SetChatMemberStatus(
-                chatId,
-                new TdApi.MessageSenderUser(userId),
-                new TdApi.ChatMemberStatusBanned(executeTime)
-        ), res -> {
-            if (res.isError()) future.completeExceptionally(new RuntimeException(res.getError().message));
-            else future.complete(null);
-        });
-        return future;
+        return Mono.create(sink ->
+                client.send(new TdApi.SetChatMemberStatus(
+                        chatId,
+                        new TdApi.MessageSenderUser(userId),
+                        new TdApi.ChatMemberStatusBanned(executeTime)
+                ), res -> {
+                    if (res.isError()) sink.error(new RuntimeException(res.getError().message));
+                    else sink.success();
+                })
+        );
     }
 
     public int parseDuration(String input) {
@@ -109,15 +104,13 @@ public class Ban {
     private void showHelp(long chatId) {
         CommandContainer ban = commandRegistry.getCommand("ban");
         String text = "<b>Format Salah!</b>\n" + (ban != null ? ban.command().description() : "Reply pesan target.");
-
         send(chatId, text);
     }
 
     private void send(long chatId, String text) {
-        sendMessageUtils.sendMessage(chatId, text).exceptionally(ex -> {
-            globalTelegramExceptionHandler.handle(ex);
-            return null;
-        });
+        sendMessageUtils.sendMessage(chatId, text)
+                .doOnError(globalTelegramExceptionHandler::handle)
+                .subscribe();
     }
 
     private void sendSystemMessage(long chatId, String text) {

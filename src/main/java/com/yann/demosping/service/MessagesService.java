@@ -5,8 +5,7 @@ import it.tdlight.client.SimpleTelegramClient;
 import it.tdlight.jni.TdApi;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
-
-import java.util.concurrent.CompletableFuture;
+import reactor.core.publisher.Mono;
 
 @Component
 public class MessagesService {
@@ -17,20 +16,19 @@ public class MessagesService {
         this.client = client;
     }
 
-    public CompletableFuture<TdApi.Message> getMessage(long chatId, long messageId, long currentMessageId) {
-        CompletableFuture<TdApi.Message> messageFuture = new CompletableFuture<>();
-        client.send(
-                new TdApi.GetMessage(chatId, messageId), result -> {
+    public Mono<TdApi.Message> getMessage(long chatId, long messageId, long currentMessageId) {
+        return Mono.create(sink ->
+                client.send(new TdApi.GetMessage(chatId, messageId), result -> {
                     if (result.isError()) {
                         if (result.getError().code == 429) {
-                            messageFuture.completeExceptionally(new GetMessageException("Too Many Request", chatId, currentMessageId));
+                            sink.error(new GetMessageException("Too Many Request", chatId, currentMessageId));
+                        } else {
+                            sink.error(new GetMessageException("Error : " + result.getError().message, chatId, currentMessageId));
                         }
-                        messageFuture.completeExceptionally(new GetMessageException("Error : " + result.getError().message, chatId, currentMessageId));
+                    } else {
+                        sink.success(result.get());
                     }
-                    messageFuture.complete(result.get());
-                }
+                })
         );
-        return messageFuture;
     }
-
 }

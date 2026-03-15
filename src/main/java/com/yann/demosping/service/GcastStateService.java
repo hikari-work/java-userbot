@@ -3,19 +3,21 @@ package com.yann.demosping.service;
 import com.google.gson.Gson;
 import com.yann.demosping.dto.GcastConfig;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ReactiveRedisTemplate;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
 
+import java.time.Duration;
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class GcastStateService {
 
-    private final RedisTemplate<String, Object> redisTemplate;
+    private final ReactiveRedisTemplate<String, Object> reactiveRedisTemplate;
     private final Gson gson;
 
     private static final String SESSION_PREFIX = "gcast:session:";
@@ -26,113 +28,117 @@ public class GcastStateService {
     private static final String CANCEL_PREFIX = "gcast:cancel:";
     private static final String RUNNING_KEY = "gcast:running";
 
-    public void saveSession(String sid, GcastConfig config) {
-        redisTemplate.opsForValue().set(SESSION_PREFIX + sid, gson.toJson(config), 48, TimeUnit.HOURS);
+    public Mono<Boolean> saveSession(String sid, GcastConfig config) {
+        return reactiveRedisTemplate.opsForValue()
+                .set(SESSION_PREFIX + sid, gson.toJson(config), Duration.ofHours(48));
     }
 
-    public GcastConfig getSession(String sid) {
-        Object val = redisTemplate.opsForValue().get(SESSION_PREFIX + sid);
-        if (val == null) return null;
-        return gson.fromJson(val.toString(), GcastConfig.class);
+    public Mono<GcastConfig> getSession(String sid) {
+        return reactiveRedisTemplate.opsForValue().get(SESSION_PREFIX + sid)
+                .map(val -> gson.fromJson(val.toString(), GcastConfig.class));
     }
 
-    public void deleteSession(String sid) {
-        redisTemplate.delete(SESSION_PREFIX + sid);
+    public Mono<Long> deleteSession(String sid) {
+        return reactiveRedisTemplate.delete(SESSION_PREFIX + sid);
     }
 
-    public void setAwaitingCron(long chatId, String sid) {
-        redisTemplate.opsForValue().set(AWAIT_CRON_PREFIX + chatId, sid, 30, TimeUnit.MINUTES);
+    public Mono<Boolean> setAwaitingCron(long chatId, String sid) {
+        return reactiveRedisTemplate.opsForValue()
+                .set(AWAIT_CRON_PREFIX + chatId, sid, Duration.ofMinutes(30));
     }
 
-    public String getAwaitingCron(long chatId) {
-        Object val = redisTemplate.opsForValue().get(AWAIT_CRON_PREFIX + chatId);
-        return val == null ? null : val.toString();
+    public Mono<String> getAwaitingCron(long chatId) {
+        return reactiveRedisTemplate.opsForValue().get(AWAIT_CRON_PREFIX + chatId)
+                .map(Object::toString);
     }
 
-    public void clearAwaitingCron(long chatId) {
-        redisTemplate.delete(AWAIT_CRON_PREFIX + chatId);
+    public Mono<Long> clearAwaitingCron(long chatId) {
+        return reactiveRedisTemplate.delete(AWAIT_CRON_PREFIX + chatId);
     }
 
-    public void addWhitelist(long chatId) {
-        redisTemplate.opsForSet().add(WHITELIST_KEY, String.valueOf(chatId));
+    public Mono<Long> addWhitelist(long chatId) {
+        return reactiveRedisTemplate.opsForSet().add(WHITELIST_KEY, String.valueOf(chatId));
     }
 
-    public void removeWhitelist(long chatId) {
-        redisTemplate.opsForSet().remove(WHITELIST_KEY, String.valueOf(chatId));
+    public Mono<Long> removeWhitelist(long chatId) {
+        return reactiveRedisTemplate.opsForSet().remove(WHITELIST_KEY, String.valueOf(chatId));
     }
 
-    public Set<Long> getWhitelist() {
+    public Mono<Set<Long>> getWhitelist() {
         return getLongSet(WHITELIST_KEY);
     }
 
-    public void addBlacklist(long chatId) {
-        redisTemplate.opsForSet().add(BLACKLIST_KEY, String.valueOf(chatId));
+    public Mono<Long> addBlacklist(long chatId) {
+        return reactiveRedisTemplate.opsForSet().add(BLACKLIST_KEY, String.valueOf(chatId));
     }
 
-    public void removeBlacklist(long chatId) {
-        redisTemplate.opsForSet().remove(BLACKLIST_KEY, String.valueOf(chatId));
+    public Mono<Long> removeBlacklist(long chatId) {
+        return reactiveRedisTemplate.opsForSet().remove(BLACKLIST_KEY, String.valueOf(chatId));
     }
 
-    public Set<Long> getBlacklist() {
+    public Mono<Set<Long>> getBlacklist() {
         return getLongSet(BLACKLIST_KEY);
     }
 
-    public void addLabel(String name, long chatId) {
-        redisTemplate.opsForSet().add(LABEL_PREFIX + name, String.valueOf(chatId));
+    public Mono<Long> addLabel(String name, long chatId) {
+        return reactiveRedisTemplate.opsForSet().add(LABEL_PREFIX + name, String.valueOf(chatId));
     }
 
-    public void removeLabel(String name, long chatId) {
-        redisTemplate.opsForSet().remove(LABEL_PREFIX + name, String.valueOf(chatId));
+    public Mono<Long> removeLabel(String name, long chatId) {
+        return reactiveRedisTemplate.opsForSet().remove(LABEL_PREFIX + name, String.valueOf(chatId));
     }
 
-    public Set<Long> getLabel(String name) {
+    public Mono<Set<Long>> getLabel(String name) {
         return getLongSet(LABEL_PREFIX + name);
     }
 
-    public Set<String> getLabelNames() {
-        Set<String> keys = redisTemplate.keys(LABEL_PREFIX + "*");
-        if (keys == null || keys.isEmpty()) return new HashSet<>();
-        return keys.stream()
+    public Mono<Set<String>> getLabelNames() {
+        return reactiveRedisTemplate.keys(LABEL_PREFIX + "*")
                 .map(k -> k.substring(LABEL_PREFIX.length()))
-                .collect(Collectors.toSet());
+                .collect(Collectors.toSet())
+                .defaultIfEmpty(new HashSet<>());
     }
 
-    public void setCancelFlag(String sid) {
-        redisTemplate.opsForValue().set(CANCEL_PREFIX + sid, "1", 1, TimeUnit.HOURS);
+    public Mono<Boolean> setCancelFlag(String sid) {
+        return reactiveRedisTemplate.opsForValue()
+                .set(CANCEL_PREFIX + sid, "1", Duration.ofHours(1));
     }
 
-    public boolean isCancelled(String sid) {
-        return redisTemplate.hasKey(CANCEL_PREFIX + sid);
+    public Mono<Boolean> isCancelled(String sid) {
+        return reactiveRedisTemplate.hasKey(CANCEL_PREFIX + sid)
+                .defaultIfEmpty(false);
     }
 
-    public void clearCancelFlag(String sid) {
-        redisTemplate.delete(CANCEL_PREFIX + sid);
+    public Mono<Long> clearCancelFlag(String sid) {
+        return reactiveRedisTemplate.delete(CANCEL_PREFIX + sid);
     }
 
-    public void addRunningSession(String sid) {
-        redisTemplate.opsForSet().add(RUNNING_KEY, sid);
+    public Mono<Long> addRunningSession(String sid) {
+        return reactiveRedisTemplate.opsForSet().add(RUNNING_KEY, sid);
     }
 
-    public void removeRunningSession(String sid) {
-        redisTemplate.opsForSet().remove(RUNNING_KEY, sid);
+    public Mono<Long> removeRunningSession(String sid) {
+        return reactiveRedisTemplate.opsForSet().remove(RUNNING_KEY, sid);
     }
 
-    public Set<String> getRunningSessionIds() {
-        Set<Object> raw = redisTemplate.opsForSet().members(RUNNING_KEY);
-        if (raw == null) return new HashSet<>();
-        return raw.stream().map(Object::toString).collect(Collectors.toSet());
+    public Mono<Set<String>> getRunningSessionIds() {
+        return reactiveRedisTemplate.opsForSet().members(RUNNING_KEY)
+                .map(Object::toString)
+                .collect(Collectors.toSet())
+                .defaultIfEmpty(new HashSet<>());
     }
 
-    private Set<Long> getLongSet(String key) {
-        Set<Object> raw = redisTemplate.opsForSet().members(key);
-        if (raw == null) return new HashSet<>();
-        Set<Long> result = new HashSet<>();
-        for (Object o : raw) {
-            try {
-                result.add(Long.parseLong(o.toString()));
-            } catch (NumberFormatException ignored) {
-            }
-        }
-        return result;
+    private Mono<Set<Long>> getLongSet(String key) {
+        return reactiveRedisTemplate.opsForSet().members(key)
+                .map(o -> {
+                    try {
+                        return Long.parseLong(o.toString());
+                    } catch (NumberFormatException e) {
+                        return null;
+                    }
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet())
+                .defaultIfEmpty(new HashSet<>());
     }
 }

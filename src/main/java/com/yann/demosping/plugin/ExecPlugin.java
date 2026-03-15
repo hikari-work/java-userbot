@@ -45,11 +45,10 @@ public class ExecPlugin {
         long cmdMsgId = message.message.id;
 
         shellExecutors.execute(args)
-                .thenAccept(output -> sendViaInlineBot(chatId, cmdMsgId, args, output))
-                .exceptionally(ex -> {
-                    log.error("Shell execution failed for cmd: {}", args, ex);
-                    return null;
-                });
+                .subscribe(
+                        output -> sendViaInlineBot(chatId, cmdMsgId, args, output),
+                        ex -> log.error("Shell execution failed for cmd: {}", args, ex)
+                );
     }
 
     /**
@@ -84,18 +83,17 @@ public class ExecPlugin {
 
         // Execute new command and send fresh result
         shellExecutors.execute(newCmd)
-                .thenAccept(output -> sendViaInlineBot(chatId, cmdMsgId, newCmd, output))
-                .exceptionally(ex -> {
-                    log.error("Shell re-execution failed for cmd: {}", newCmd, ex);
-                    return null;
-                });
+                .subscribe(
+                        output -> sendViaInlineBot(chatId, cmdMsgId, newCmd, output),
+                        ex -> log.error("Shell re-execution failed for cmd: {}", newCmd, ex)
+                );
     }
 
     private void sendViaInlineBot(long chatId, long cmdMsgId, String cmd, String output) {
-        execResultCache.put(cmd, truncate(output));
+        execResultCache.put(cmd, output != null ? output : "No output");
 
         getInlineResults.inlineQuery(chatId, botId, "exec " + cmd)
-                .thenAccept(results -> {
+                .subscribe(results -> {
                     if (results == null || results.results == null || results.results.length == 0) {
                         log.warn("No inline results returned for exec query: {}", cmd);
                         return;
@@ -121,16 +119,7 @@ public class ExecPlugin {
                             log.info("Exec result sent: cmd='{}' msgId={} resultId={}", cmd, sentMsg.id, resultId);
                         }
                     });
-                })
-                .exceptionally(ex -> {
-                    log.error("GetInlineQueryResults failed for cmd: {}", cmd, ex);
-                    return null;
-                });
-    }
-
-    private String truncate(String output) {
-        if (output == null || output.isEmpty()) return "No output";
-        return output.length() > 1000 ? output.substring(0, 1000) + "\n...(truncated)" : output;
+                }, ex -> log.error("GetInlineQueryResults failed for cmd: {}", cmd, ex));
     }
 
     private String extractResultId(TdApi.InlineQueryResult result) {

@@ -74,7 +74,7 @@ public class InlinePlugin {
 
 
         getInlineResults.inlineQuery(chatId, botId, botQuery)
-                .thenAccept(results -> {
+                .subscribe(results -> {
                     if (results.results == null || results.results.length == 0) {
                         log.warn("No inline results for query: {}", botQuery);
                         return;
@@ -101,10 +101,6 @@ public class InlinePlugin {
                                     resp.getError().code, resp.getError().message);
                         }
                     });
-                })
-                .exceptionally(ex -> {
-                    log.error("GetInlineQueryResults failed for query '{}'", botQuery, ex);
-                    return null;
-                });
+                }, ex -> log.error("GetInlineQueryResults failed for query '{}'", botQuery, ex));
     }
 }

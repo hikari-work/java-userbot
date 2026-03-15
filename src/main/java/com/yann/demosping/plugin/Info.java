@@ -9,11 +9,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Mono;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -48,93 +48,88 @@ public class Info {
         }
         long chatId = message.message.chatId;
         client.send(new TdApi.DeleteMessages(chatId, new long[]{message.message.id}, true), null);
+
         resolveTargetUserId(message, args)
-                .thenCompose(userId -> getUserInformation(userId)
-                        .thenCompose(user -> generatingTextResult(user)
-                                .thenCompose(formattedText -> generateMessageContent(user.id, formattedText)
-                .handle((albumContent, ex) -> {
-                    if (ex != null || albumContent == null || albumContent.isEmpty()) {
-                        sendFallbackText(chatId, formattedText);
-                    } else {
-                        sendAlbum(chatId, albumContent);
-                    }
-                    return null;
-                })))).exceptionally(ex -> {
-            sendError(chatId, "Error: " + ex.getMessage());
-            return null;
-        });
+                .flatMap(uid -> getUserInformation(uid)
+                        .flatMap(user -> generatingTextResult(user)
+                                .flatMap(formattedText -> generateMessageContent(user.id, formattedText)
+                                        .doOnNext(albumContent -> {
+                                            if (albumContent.isEmpty()) sendFallbackText(chatId, formattedText);
+                                            else sendAlbum(chatId, albumContent);
+                                        })
+                                )
+                        )
+                )
+                .onErrorResume(ex -> {
+                    sendError(chatId, "Error: " + ex.getMessage());
+                    return Mono.empty();
+                })
+                .subscribe();
     }
 
-    private CompletableFuture<Long> resolveTargetUserId(TdApi.UpdateNewMessage message, String args) {
-        CompletableFuture<Long> future = new CompletableFuture<>();
-
+    private Mono<Long> resolveTargetUserId(TdApi.UpdateNewMessage message, String args) {
         if (args == null || args.trim().isEmpty()) {
             if (message.message.replyTo instanceof TdApi.MessageReplyToMessage replyInfo) {
-                client.send(new TdApi.GetMessage(message.message.chatId, replyInfo.messageId), res -> {
-                    if (res.isError()) {
-                        future.completeExceptionally(new RuntimeException("Pesan yang di-reply tidak ditemukan."));
-                        return;
-                    }
-                    TdApi.Message replyMsg = res.get();
-                    if (replyMsg.senderId instanceof TdApi.MessageSenderUser senderUser) {
-                        future.complete(senderUser.userId);
-                    } else {
-                        future.completeExceptionally(new RuntimeException("Pesan ini bukan dari user (mungkin channel/anon)."));
-                    }
-                });
+                return Mono.create(sink ->
+                        client.send(new TdApi.GetMessage(message.message.chatId, replyInfo.messageId), res -> {
+                            if (res.isError()) {
+                                sink.error(new RuntimeException("Pesan yang di-reply tidak ditemukan."));
+                                return;
+                            }
+                            TdApi.Message replyMsg = res.get();
+                            if (replyMsg.senderId instanceof TdApi.MessageSenderUser senderUser) {
+                                sink.success(senderUser.userId);
+                            } else {
+                                sink.error(new RuntimeException("Pesan ini bukan dari user (mungkin channel/anon)."));
+                            }
+                        })
+                );
             } else {
-                future.complete(message.message.chatId > 0 ? message.message.chatId : userId);
+                return Mono.just(message.message.chatId > 0 ? message.message.chatId : userId);
             }
-            return future;
         }
 
         if (args.startsWith("@")) {
             String username = args.substring(1);
-            client.send(new TdApi.SearchPublicChat(username), res -> {
-                if (res.isError()) {
-                    future.completeExceptionally(new RuntimeException("Username tidak ditemukan."));
-                    return;
-                }
-                TdApi.Chat chat = res.get();
-                if (chat.type instanceof TdApi.ChatTypePrivate privateChat) {
-                    future.complete(privateChat.userId);
-                } else {
-                    future.completeExceptionally(new RuntimeException("Username ini bukan milik User Personal."));
-                }
-            });
-            return future;
+            return Mono.create(sink ->
+                    client.send(new TdApi.SearchPublicChat(username), res -> {
+                        if (res.isError()) {
+                            sink.error(new RuntimeException("Username tidak ditemukan."));
+                            return;
+                        }
+                        TdApi.Chat chat = res.get();
+                        if (chat.type instanceof TdApi.ChatTypePrivate privateChat) {
+                            sink.success(privateChat.userId);
+                        } else {
+                            sink.error(new RuntimeException("Username ini bukan milik User Personal."));
+                        }
+                    })
+            );
         }
 
         if (args.matches("^\\+?\\d+$")) {
             try {
-                long userId = Long.parseLong(args.replaceAll("\\+", ""));
-                future.complete(userId);
+                long uid = Long.parseLong(args.replaceAll("\\+", ""));
+                return Mono.just(uid);
             } catch (NumberFormatException e) {
-                future.completeExceptionally(new RuntimeException("Format ID salah."));
+                return Mono.error(new RuntimeException("Format ID salah."));
             }
-            return future;
         }
 
-        future.completeExceptionally(new RuntimeException("Format argumen tidak dikenali."));
-        return future;
+        return Mono.error(new RuntimeException("Format argumen tidak dikenali."));
     }
 
-    private CompletableFuture<TdApi.User> getUserInformation(long userId) {
-        CompletableFuture<TdApi.User> future = new CompletableFuture<>();
-        client.send(new TdApi.GetUser(userId), result -> {
-            if (result.isError()) {
-                future.completeExceptionally(new RuntimeException("User ID tidak valid / User belum dikenal bot."));
-            } else {
-                future.complete(result.get());
-            }
-        });
-        return future;
+    private Mono<TdApi.User> getUserInformation(long userId) {
+        return Mono.create(sink ->
+                client.send(new TdApi.GetUser(userId), result -> {
+                    if (result.isError()) sink.error(new RuntimeException("User ID tidak valid / User belum dikenal bot."));
+                    else sink.success(result.get());
+                })
+        );
     }
 
-    private CompletableFuture<TdApi.FormattedText> generatingTextResult(TdApi.User user) {
-        CompletableFuture<TdApi.FormattedText> future = new CompletableFuture<>();
+    private Mono<TdApi.FormattedText> generatingTextResult(TdApi.User user) {
         StringBuilder sb = new StringBuilder();
-
         sb.append("<b>👤 USER INFORMATION</b>\n\n");
 
         String firstName = user.firstName == null ? "" : user.firstName;
@@ -166,51 +161,40 @@ public class Info {
 
         if (user.type instanceof TdApi.UserTypeBot) sb.append("<b>Type:</b> 🤖 Bot\n");
 
-        return parseTextEntitiesUtils.formatText(sb.toString()).exceptionally(ex -> {
-            globalTelegramExceptionHandler.handle(ex);
-            return null;
-        });
+        return parseTextEntitiesUtils.formatText(sb.toString())
+                .doOnError(globalTelegramExceptionHandler::handle);
     }
 
-    private CompletableFuture<List<TdApi.InputMessageContent>> generateMessageContent(long userId, TdApi.FormattedText caption) {
-        CompletableFuture<List<TdApi.InputMessageContent>> future = new CompletableFuture<>();
-
-        client.send(new TdApi.GetUserProfilePhotos(userId, 0, 10), photoResult -> {
-            if (photoResult.isError()) {
-                future.complete(null);
-                return;
-            }
-
-            TdApi.ChatPhotos photos = photoResult.get();
-
-            if (photos.totalCount == 0 || photos.photos.length == 0) {
-                future.complete(null);
-                return;
-            }
-
-            List<TdApi.InputMessageContent> albumContent = new ArrayList<>();
-            for (int i = 0; i < photos.photos.length; i++) {
-                TdApi.ChatPhoto photo = photos.photos[i];
-                TdApi.File file = photo.sizes[photo.sizes.length - 1].photo;
-
-                TdApi.InputFile inputFile = new TdApi.InputFileRemote(file.remote.id);
-                TdApi.FormattedText photoCaption = (i == 0) ? caption : null;
-
-                albumContent.add(new TdApi.InputMessagePhoto(
-                        inputFile, null, null, 0, 0, photoCaption, false, null, false
-                ));
-            }
-            future.complete(albumContent);
-        });
-        return future;
+    private Mono<List<TdApi.InputMessageContent>> generateMessageContent(long userId, TdApi.FormattedText caption) {
+        return Mono.create(sink ->
+                client.send(new TdApi.GetUserProfilePhotos(userId, 0, 10), photoResult -> {
+                    if (photoResult.isError()) {
+                        sink.success(List.of());
+                        return;
+                    }
+                    TdApi.ChatPhotos photos = photoResult.get();
+                    if (photos.totalCount == 0 || photos.photos.length == 0) {
+                        sink.success(List.of());
+                        return;
+                    }
+                    List<TdApi.InputMessageContent> albumContent = new ArrayList<>();
+                    for (int i = 0; i < photos.photos.length; i++) {
+                        TdApi.ChatPhoto photo = photos.photos[i];
+                        TdApi.File file = photo.sizes[photo.sizes.length - 1].photo;
+                        TdApi.InputFile inputFile = new TdApi.InputFileRemote(file.remote.id);
+                        TdApi.FormattedText photoCaption = (i == 0) ? caption : null;
+                        albumContent.add(new TdApi.InputMessagePhoto(
+                                inputFile, null, null, 0, 0, photoCaption, false, null, false
+                        ));
+                    }
+                    sink.success(albumContent);
+                })
+        );
     }
 
     private void sendAlbum(long chatId, List<TdApi.InputMessageContent> content) {
         client.send(new TdApi.SendMessageAlbum(
-                chatId,
-                0,
-                null,
-                null,
+                chatId, 0, null, null,
                 content.toArray(new TdApi.InputMessageContent[0])
         ));
     }
